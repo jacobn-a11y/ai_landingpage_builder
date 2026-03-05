@@ -1,0 +1,25 @@
+{
+  "name": "replica-pages",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@10.2.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "npm run db:generate -w @replica-pages/api",
+    "db:migrate": "npm run db:migrate -w @replica-pages/api",
+    "db:push": "npm run db:push -w @replica-pages/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

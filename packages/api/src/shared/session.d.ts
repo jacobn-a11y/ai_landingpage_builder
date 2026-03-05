@@ -1,0 +1,13 @@
+import 'express-session';
+
+declare module 'express-session' {
+  interface SessionData {
+    userId?: string;
+    workspaceId?: string;
+    role?: 'Admin' | 'Editor' | 'Viewer';
+    inviteToken?: string;
+    inviteWorkspaceId?: string;
+    inviteRole?: string;
+    inviteEmail?: string;
+  }
+}

@@ -1,0 +1,207 @@
+// Replica Pages - Phase 1 Prisma Schema
+// PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id                   String    @id @default(cuid())
+  name                 String
+  allowedEmailDomains  String[]  @default([])
+  globalHeaderScript   String?   // Admin-only global script injected before </head>
+  globalFooterScript   String?   // Admin-only global script injected before </body>
+  scriptAllowlist      Json?     @default("[]") // [{ domain, pathPrefix? }]
+  createdAt            DateTime  @default(now())
+
+  users      User[]
+  invites    Invite[]
+  folders    Folder[]
+  domains    Domain[]
+  pages      Page[]
+  forms      Form[]
+  submissions Submission[]
+  integrations Integration[]
+  blockLibraryFolders BlockLibraryFolder[]
+
+  @@index([id])
+}
+
+model User {
+  id          String   @id @default(cuid())
+  workspaceId String
+  email       String
+  role        String   // Admin | Editor | Viewer
+  googleId    String?  @unique
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId])
+  @@index([googleId])
+}
+
+model Invite {
+  id          String   @id @default(cuid())
+  workspaceId String
+  email       String
+  role        String
+  token       String   @unique
+  expiresAt   DateTime
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([token])
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  workspaceId String
+  parentId    String?
+  name        String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pages     Page[]
+  parent    Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Folder[] @relation("FolderHierarchy")
+
+  @@index([workspaceId])
+  @@index([parentId])
+}
+
+model Domain {
+  id                    String    @id @default(cuid())
+  workspaceId           String
+  hostname              String
+  status                String    // Draft | PendingDNS | Verifying | Active | Error
+  verificationTxt       String?
+  verificationCheckedAt DateTime?
+  verificationError     String?   // Error details when status = Error
+  cnameTarget           String?
+  sslStatus             String?
+  embedPolicy           String?   // allow | deny
+  custom404PageId       String?   // page to show for 404s
+  redirects              Json?     @default("[]") // [{ from, to, status: 301|302 }]
+  createdAt             DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, hostname])
+  @@index([workspaceId])
+}
+
+model Page {
+  id                     String   @id @default(cuid())
+  workspaceId            String
+  folderId               String?
+  name                   String
+  slug                   String
+  contentJson            Json     @default("{}")
+  lastPublishedContentJson Json?  @default("{}")
+  scripts                Json?    @default("{}")
+  publishConfig          Json?    @default("{}")
+  scheduleConfig         Json?    @default("{}")
+  version                Int      @default(1)
+  createdAt              DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder    Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  formBindings PageFormBinding[]
+  submissions Submission[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@index([folderId])
+}
+
+model Form {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  schemaJson  Json     @default("{}")
+  version     Int      @default(1)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pageBindings PageFormBinding[]
+
+  @@index([workspaceId])
+}
+
+model PageFormBinding {
+  id            String   @id @default(cuid())
+  pageId        String
+  formId        String?  // optional for hooked forms (no Form record)
+  blockId       String?  // for native: block id in contentJson
+  type          String   // native | hooked
+  selector      String?  // for hooked: CSS selector
+  fieldMappings Json?    @default("{}") // { canonicalField: formFieldName }
+
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  form Form? @relation(fields: [formId], references: [id], onDelete: SetNull)
+
+  @@index([pageId])
+  @@index([formId])
+}
+
+model Submission {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  pageId           String
+  payloadJson      Json      @default("{}")
+  deliveryStatus   String?   // pending | delivered | failed
+  deliveryAttempts Json?     @default("[]") // [{ attempt, status, error?, at }]
+  deliveredAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  page      Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([pageId])
+  @@index([createdAt])
+}
+
+model Integration {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  type            String    // zapier | salesforce | webflow
+  configEncrypted String?
+  createdAt       DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+// Block library: elements and blocks extracted from uploaded pages, foldered by source page
+model BlockLibraryFolder {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String   // Source page name (e.g. "My Landing Page")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items      BlockLibraryItem[]
+
+  @@index([workspaceId])
+}
+
+model BlockLibraryItem {
+  id        String   @id @default(cuid())
+  folderId  String
+  name      String   // Display name (block type or truncated content)
+  type      String   // element | block (element = leaf, block = has children)
+  blockJson Json     // The block data (id, type, props, children)
+  createdAt DateTime @default(now())
+
+  folder BlockLibraryFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+}
