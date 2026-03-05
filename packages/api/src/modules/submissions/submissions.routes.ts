@@ -64,8 +64,11 @@ submissionsRouter.post('/', postRateLimiter, async (req: Request, res: Response)
     const redirectUrl = formConfig?.redirectUrl;
 
     if (successBehavior === 'redirect' && redirectUrl) {
-      res.redirect(302, redirectUrl);
-      return;
+      const trimmed = String(redirectUrl).trim();
+      if (/^https?:\/\/[^\s"'<>]+$/i.test(trimmed)) {
+        res.redirect(302, trimmed);
+        return;
+      }
     }
 
     res.status(200).json({ success: true });

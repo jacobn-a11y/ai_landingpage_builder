@@ -13,17 +13,25 @@ import {
 } from '@/components/ui/select';
 import { api, type BlockLibraryFolder, type BlockLibraryItem } from '@/lib/api';
 import { useEditor } from './EditorContext';
+import { useToast } from '@/contexts/ToastContext';
 import { Library, Trash2 } from 'lucide-react';
 
 export function LibraryDropdown() {
   const { insertBlockFromLibrary, content, selectedBlockId } = useEditor();
+  const { showError } = useToast();
   const [folders, setFolders] = useState<BlockLibraryFolder[]>([]);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const targetParentId = selectedBlockId ?? content.root ?? null;
 
   useEffect(() => {
-    api.library.listFolders().then(({ folders: f }) => setFolders(f)).catch(() => setFolders([]));
-  }, []);
+    api.library
+      .listFolders()
+      .then(({ folders: f }) => setFolders(f))
+      .catch((e) => {
+        setFolders([]);
+        showError(e instanceof Error ? e.message : 'Failed to load library');
+      });
+  }, [showError]);
 
   const handleInsert = (item: BlockLibraryItem) => {
     const blockJson = item.blockJson as object;
@@ -40,8 +48,8 @@ export function LibraryDropdown() {
           items: f.items.filter((i) => i.id !== itemId),
         }))
       );
-    } catch {
-      // Surface error
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to delete item');
     }
   };
 
@@ -51,8 +59,8 @@ export function LibraryDropdown() {
       await api.library.deleteFolder(folderId);
       setFolders((prev) => prev.filter((f) => f.id !== folderId));
       if (openFolderId === folderId) setOpenFolderId(null);
-    } catch {
-      // Surface error
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to delete folder');
     }
   };
 

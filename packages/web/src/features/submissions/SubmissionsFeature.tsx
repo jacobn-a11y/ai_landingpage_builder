@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/contexts/ToastContext';
 
 const CANONICAL_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'company', 'title'];
 
@@ -27,6 +28,7 @@ function getPayloadValue(payload: Record<string, unknown>, key: string): string 
 }
 
 export function SubmissionsFeature() {
+  const { showError } = useToast();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [pageId, setPageId] = useState<string>('');
@@ -35,8 +37,14 @@ export function SubmissionsFeature() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.pages.list().then(({ pages: p }) => setPages(p)).catch(() => {});
-  }, []);
+    api.pages
+      .list()
+      .then(({ pages: p }) => setPages(p))
+      .catch((e) => {
+        setPages([]);
+        showError(e instanceof Error ? e.message : 'Failed to load pages');
+      });
+  }, [showError]);
 
   useEffect(() => {
     setLoading(true);

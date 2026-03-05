@@ -62,7 +62,7 @@ describe('Submissions POST /api/v1/submissions', () => {
           page_id: 'page-1',
           page_name: 'Test Page',
           page_slug: 'test-page',
-          utm_page: 'test-page',
+          utm_page: 'Test Page',
         }),
       }),
     });

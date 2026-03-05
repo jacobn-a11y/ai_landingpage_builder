@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ExternalLink, Loader2, Copy, Check } from 'lucide-react';
+import { useToast } from '@/contexts/ToastContext';
 
 interface PublishDialogProps {
   open: boolean;
@@ -28,6 +29,7 @@ interface PublishDialogProps {
 }
 
 export function PublishDialog({ open, onOpenChange, page, onPublished }: PublishDialogProps) {
+  const { showError, showSuccess } = useToast();
   const [status, setStatus] = useState<PublishStatus | null>(null);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,9 +50,14 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
 
   const copyUrl = () => {
     if (!destinationUrl) return;
-    navigator.clipboard.writeText(destinationUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(destinationUrl).then(
+      () => {
+        setCopied(true);
+        showSuccess('Copied to clipboard');
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => showError('Failed to copy')
+    );
   };
 
   useEffect(() => {
@@ -78,11 +85,17 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
           }
         } else setScheduleUnpublishAt('');
       })
-      .catch(() => setStatus(null));
+      .catch((e) => {
+        setStatus(null);
+        showError(e instanceof Error ? e.message : 'Failed to load publish status');
+      });
     api.domains
       .list()
       .then(({ domains: d }) => setDomains(d.filter((x) => x.status === 'Active')))
-      .catch(() => setDomains([]));
+      .catch((e) => {
+        setDomains([]);
+        showError(e instanceof Error ? e.message : 'Failed to load domains');
+      });
   }, [open, page.id, page.slug]);
 
   const handlePublish = async () => {
@@ -101,7 +114,10 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
       await api.pages.publish(page.id, data);
       const { publishStatus } = await api.pages.getPublishStatus(page.id);
       setStatus(publishStatus);
+      showSuccess('Page published successfully');
       onPublished?.();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to publish');
     } finally {
       setLoading(false);
     }
@@ -113,7 +129,10 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
       await api.pages.unpublish(page.id);
       const { publishStatus } = await api.pages.getPublishStatus(page.id);
       setStatus(publishStatus);
+      showSuccess('Page unpublished');
       onPublished?.();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to unpublish');
     } finally {
       setLoading(false);
     }
@@ -128,7 +147,10 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
       });
       const { publishStatus } = await api.pages.getPublishStatus(page.id);
       setStatus(publishStatus);
+      showSuccess('Schedule updated');
       onPublished?.();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to update schedule');
     } finally {
       setLoading(false);
     }
@@ -224,8 +246,9 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
                   size="icon"
                   onClick={copyUrl}
                   title="Copy URL"
+                  aria-label={copied ? 'Copied to clipboard' : 'Copy URL'}
                 >
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">

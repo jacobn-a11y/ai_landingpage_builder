@@ -42,3 +42,27 @@ export function sanitizeHtml(html: string): string {
   });
   return out;
 }
+
+/**
+ * Sanitize custom HTML blocks: strip script, style, event handlers, javascript: URLs.
+ * Allows structural HTML (div, table, iframe with safe src, etc.) for embeds and layouts.
+ */
+export function sanitizeCustomHtml(html: string): string {
+  if (!html?.trim()) return '';
+  let out = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/javascript:/gi, '');
+  out = out.replace(/href\s*=\s*["']([^"']*)["']/gi, (_, url) => {
+    const u = url.trim();
+    if (/^(javascript|data):/i.test(u)) return 'href="#"';
+    return `href="${escapeAttr(u)}"`;
+  });
+  out = out.replace(/src\s*=\s*["']([^"']*)["']/gi, (_, url) => {
+    const u = url.trim();
+    if (/^(javascript|data):/i.test(u)) return '';
+    return `src="${escapeAttr(u)}"`;
+  });
+  return out;
+}

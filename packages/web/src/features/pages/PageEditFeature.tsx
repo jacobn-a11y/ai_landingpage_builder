@@ -38,7 +38,7 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
       {/* Top bar */}
       <header className="flex items-center justify-between gap-4 px-4 py-2 border-b bg-background shrink-0">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to pages">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-lg font-semibold truncate max-w-[200px]">
@@ -63,6 +63,7 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
             onClick={undo}
             disabled={!canUndo}
             title="Undo"
+            aria-label="Undo"
           >
             <Undo2 className="h-4 w-4" />
           </Button>
@@ -72,6 +73,7 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
             onClick={redo}
             disabled={!canRedo}
             title="Redo"
+            aria-label="Redo"
           >
             <Redo2 className="h-4 w-4" />
           </Button>
@@ -81,6 +83,7 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
               size="icon"
               onClick={rollbackToPublished}
               title="Rollback to published"
+              aria-label="Rollback to published"
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -128,6 +131,7 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
               size="sm"
               onClick={() => window.open(`/api/v1/serve/preview/${page.id}`, '_blank', 'noopener')}
               title="Preview draft in new tab"
+              aria-label="Preview draft in new tab"
             >
               <ExternalLink className="h-4 w-4 mr-1" />
               Preview

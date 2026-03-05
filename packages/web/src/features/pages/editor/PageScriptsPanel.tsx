@@ -8,6 +8,7 @@ import { useEditor } from './EditorContext';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api, type ScriptAllowlistEntry } from '@/lib/api';
+import { useToast } from '@/contexts/ToastContext';
 
 function extractDomainsFromScript(script: string): string[] {
   const domains: string[] = [];
@@ -64,14 +65,18 @@ function DomainWarning({
 
 export function PageScriptsPanel() {
   const { scripts, updateScripts } = useEditor();
+  const { showError } = useToast();
   const [allowlist, setAllowlist] = useState<ScriptAllowlistEntry[]>([]);
 
   useEffect(() => {
     api.workspaces
       .get()
       .then(({ workspace }) => setAllowlist(workspace.scriptAllowlist ?? []))
-      .catch(() => setAllowlist([]));
-  }, []);
+      .catch((e) => {
+        setAllowlist([]);
+        showError(e instanceof Error ? e.message : 'Failed to load script allowlist');
+      });
+  }, [showError]);
 
   return (
     <div className="space-y-4 p-3">

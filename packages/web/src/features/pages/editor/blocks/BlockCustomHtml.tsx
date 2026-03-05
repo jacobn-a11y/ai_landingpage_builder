@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useEditor } from '../EditorContext';
 import { cn } from '@/lib/utils';
+import { sanitizeCustomHtml } from '@/lib/sanitize-html';
 
 interface BlockCustomHtmlProps {
   id: string;
@@ -51,7 +52,7 @@ export function BlockCustomHtml({
   return (
     <div
       className={cn('custom-html-block', className)}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizeCustomHtml(html) }}
     />
   );
 }

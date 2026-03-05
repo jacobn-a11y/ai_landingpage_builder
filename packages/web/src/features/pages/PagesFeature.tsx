@@ -18,6 +18,7 @@ import { CreateFolderDialog } from './CreateFolderDialog';
 import { FormMappingModal } from './FormMappingModal';
 import { ImportPageDialog } from './ImportPageDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useToast } from '@/contexts/ToastContext';
 import { Plus, Pencil, Copy, Trash2, FormInput, FileUp } from 'lucide-react';
 
 function findFolderById(nodes: FolderNode[], id: string): FolderNode | null {
@@ -31,6 +32,7 @@ function findFolderById(nodes: FolderNode[], id: string): FolderNode | null {
 
 export function PagesFeature() {
   const navigate = useNavigate();
+  const { showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [pages, setPages] = useState<Page[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
@@ -52,19 +54,21 @@ export function PagesFeature() {
       const folderId = selectedFolderId === 'root' ? '' : selectedFolderId ?? undefined;
       const { pages: p } = await api.pages.list(folderId);
       setPages(p);
-    } catch {
+    } catch (e) {
       setPages([]);
+      showError(e instanceof Error ? e.message : 'Failed to load pages');
     }
-  }, [selectedFolderId]);
+  }, [selectedFolderId, showError]);
 
   const fetchFolders = useCallback(async () => {
     try {
       const { folders: f } = await api.folders.list();
       setFolders(f);
-    } catch {
+    } catch (e) {
       setFolders([]);
+      showError(e instanceof Error ? e.message : 'Failed to load folders');
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     const load = async () => {

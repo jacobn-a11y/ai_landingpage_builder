@@ -34,6 +34,13 @@ export function BlockButton({
           e.stopPropagation();
           handleBlockClick(id, e);
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            handleBlockClick(id, e as unknown as React.MouseEvent);
+          }
+        }}
       >
         {text}
       </span>

@@ -14,6 +14,7 @@ import {
 import useUndo from 'use-undo';
 import { api } from '@/lib/api';
 import type { Page, PageScripts } from '@/lib/api';
+import { useToast } from '@/contexts/ToastContext';
 import {
   type EditorContentJson,
   type EditorBlock,
@@ -116,6 +117,7 @@ export function EditorProvider({
   page: Page;
   children: React.ReactNode;
 }) {
+  const { showError } = useToast();
   const pageId = page.id;
   const initialContent = useMemo(
     () => toEditorContentJson(page.contentJson ?? null),
@@ -412,10 +414,10 @@ export function EditorProvider({
       });
       lastSavedContentRef.current = JSON.stringify(parsed);
       setLastSaved(new Date());
-    } catch {
-      // Surface error
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to rollback');
     }
-  }, [page, pageId, setState]);
+  }, [page, pageId, setState, showError]);
 
   const canRollback =
     !!page.lastPublishedContentJson &&

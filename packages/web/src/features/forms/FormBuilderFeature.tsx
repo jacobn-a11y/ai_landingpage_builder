@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type FormFieldSchema, type FormSchemaConfig } from '@/lib/api';
+import { useToast } from '@/contexts/ToastContext';
 import { FormBuilder } from './FormBuilder';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ function parseConfig(schema: FormFieldSchema[] | { fields?: FormFieldSchema[]; c
 export function FormBuilderFeature() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { showError } = useToast();
   const isEdit = !!id && id !== 'new';
 
   const [name, setName] = useState('');
@@ -38,7 +40,10 @@ export function FormBuilderFeature() {
         setFields(parseSchema(form.schemaJson));
         setConfig(parseConfig(form.schemaJson));
       })
-      .catch(() => navigate('/forms'))
+      .catch((e) => {
+        showError(e instanceof Error ? e.message : 'Failed to load form');
+        navigate('/forms');
+      })
       .finally(() => setFetchLoading(false));
   }, [id, isEdit, navigate]);
 
@@ -55,6 +60,8 @@ export function FormBuilderFeature() {
         await api.forms.create({ name: name.trim(), schemaJson: schemaPayload });
         navigate('/forms');
       }
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to save form');
     } finally {
       setLoading(false);
     }

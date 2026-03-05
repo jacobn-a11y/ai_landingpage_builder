@@ -5,7 +5,7 @@
 
 import type { BaseBlock } from '@replica-pages/blocks';
 import { getUtmCaptureScript, getFormSubmitHandlerScript, getCountdownScript } from './utm-scripts.js';
-import { sanitizeHtml } from '../../lib/sanitize-html.js';
+import { sanitizeHtml, sanitizeCustomHtml } from '../../lib/sanitize-html.js';
 
 export interface PageContentJson {
   root?: string;
@@ -81,7 +81,10 @@ interface RenderContext {
 
 function replaceDynamicText(text: string, urlParams?: Record<string, string>): string {
   if (!urlParams || typeof text !== 'string') return text;
-  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => urlParams[key] ?? '');
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const val = urlParams[key] ?? '';
+    return escapeHtml(val);
+  });
 }
 
 function evalShowWhen(showWhen: string | undefined, urlParams?: Record<string, string>): boolean {
@@ -170,8 +173,8 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       result = `<div style="height:${props.height ?? 24}px"></div>`;
       break;
     case 'customHtml': {
-      const html = replaceDynamicText(String(props.html ?? ''), ctx?.urlParams);
-      result = html;
+      const raw = replaceDynamicText(String(props.html ?? ''), ctx?.urlParams);
+      result = sanitizeCustomHtml(raw);
       break;
     }
     case 'video': {

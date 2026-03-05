@@ -58,6 +58,17 @@ if (!process.env.VITEST && process.env.BYPASS_AUTH_LOCALHOST === '1') {
   console.log('[dev] Auth bypass enabled for localhost');
 }
 
+// Reject X-Test-Auth in production (security)
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.get('X-Test-Auth') === '1') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    next();
+  });
+}
+
 // Test-only: inject fake auth when X-Test-Auth header is present (for supertest)
 if (process.env.VITEST) {
   app.use((req, _res, next) => {

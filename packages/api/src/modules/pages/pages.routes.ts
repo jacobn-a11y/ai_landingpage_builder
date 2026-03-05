@@ -95,7 +95,15 @@ pagesRouter.get('/', ...readMiddleware, async (req: Request, res: Response) => {
 
   const pages = await prisma.page.findMany({
     where,
-    include: { formBindings: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      folderId: true,
+      version: true,
+      createdAt: true,
+      formBindings: true,
+    },
     orderBy: { name: 'asc' },
   });
   res.json({ pages });
