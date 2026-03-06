@@ -42,4 +42,5 @@ coverage/
 .nyc_output/
 
 # Runtime data (assets, temp files)
+data/
 packages/api/data/
