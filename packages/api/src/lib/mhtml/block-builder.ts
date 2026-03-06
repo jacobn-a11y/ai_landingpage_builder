@@ -81,6 +81,7 @@ const BLOCK_SCHEMA_VERSION = 1;
 
 // Universal props that the editor supports natively
 const UNIVERSAL_STYLE_PROPS: Record<string, string> = {
+  // Spacing
   'margin-top': 'marginTop',
   'margin-right': 'marginRight',
   'margin-bottom': 'marginBottom',
@@ -89,7 +90,9 @@ const UNIVERSAL_STYLE_PROPS: Record<string, string> = {
   'padding-right': 'paddingRight',
   'padding-bottom': 'paddingBottom',
   'padding-left': 'paddingLeft',
+  // Background
   'background-color': 'backgroundColor',
+  // Borders
   'border-radius': 'borderRadius',
   'border-top-left-radius': 'borderTopLeftRadius',
   'border-top-right-radius': 'borderTopRightRadius',
@@ -97,9 +100,28 @@ const UNIVERSAL_STYLE_PROPS: Record<string, string> = {
   'border-bottom-right-radius': 'borderBottomRightRadius',
   'border-width': 'borderWidth',
   'border-color': 'borderColor',
+  'border-style': 'borderStyle',
+  'border-top-width': 'borderTopWidth',
+  'border-right-width': 'borderRightWidth',
+  'border-bottom-width': 'borderBottomWidth',
+  'border-left-width': 'borderLeftWidth',
+  // Sizing
   'width': 'width',
   'max-width': 'maxWidth',
   'min-width': 'minWidth',
+  // Typography
+  'font-family': 'fontFamily',
+  'font-size': 'fontSize',
+  'font-weight': 'fontWeight',
+  'line-height': 'lineHeight',
+  'letter-spacing': 'letterSpacing',
+  'text-align': 'textAlign',
+  'text-transform': 'textTransform',
+  'color': 'color',
+  // Visual
+  'opacity': 'opacity',
+  'box-shadow': 'boxShadow',
+  'object-fit': 'objectFit',
 };
 
 // --- ID Generation ---
@@ -112,26 +134,58 @@ function generateBlockId(prefix: string = 'imp'): string {
 
 // --- CSS to Props Mapping ---
 
+// Props that should be skipped when value is trivial
+const SKIP_VALUES = new Set(['0px', 'auto', 'none', 'initial', 'inherit', 'normal', 'unset', '0']);
+// Props that accept string values as-is (not just px/color/%)
+const STRING_PROPS = new Set([
+  'fontFamily', 'textAlign', 'textTransform', 'borderStyle', 'boxShadow', 'objectFit',
+]);
+// Props that accept unitless numeric values
+const UNITLESS_PROPS = new Set(['opacity', 'fontWeight', 'lineHeight']);
+
 function cssToUniversalProps(style: Record<string, string>): Record<string, unknown> {
   const props: Record<string, unknown> = {};
 
   for (const [cssProp, blockProp] of Object.entries(UNIVERSAL_STYLE_PROPS)) {
-    // Convert camelCase CSS prop names to kebab-case for lookup
-    const kebab = cssProp;
     const camel = cssProp.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const value = style[camel] || style[cssProp];
+    if (!value || SKIP_VALUES.has(value)) continue;
 
-    const value = style[camel] || style[kebab];
-    if (!value || value === '0px' || value === 'auto' || value === 'none') continue;
+    // Skip transparent/invisible backgrounds
+    if (blockProp === 'backgroundColor' && (value === 'transparent' || value === 'rgba(0, 0, 0, 0)')) continue;
 
-    // Parse pixel values
+    // Pixel values → numeric
     if (value.endsWith('px')) {
       const num = parseFloat(value);
       if (!isNaN(num) && num !== 0) {
         props[blockProp] = num;
       }
-    } else if (value.startsWith('#') || value.startsWith('rgb') || value.startsWith('hsl')) {
+    }
+    // Colors
+    else if (value.startsWith('#') || value.startsWith('rgb') || value.startsWith('hsl')) {
       props[blockProp] = normalizeColor(value);
-    } else if (value.endsWith('%')) {
+    }
+    // Percentages
+    else if (value.endsWith('%')) {
+      props[blockProp] = value;
+    }
+    // Unitless numeric (opacity, fontWeight, lineHeight)
+    else if (UNITLESS_PROPS.has(blockProp)) {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        props[blockProp] = num;
+      }
+    }
+    // em/rem values (letter-spacing, etc.)
+    else if (value.endsWith('em') || value.endsWith('rem')) {
+      props[blockProp] = value;
+    }
+    // String values (font-family, text-align, box-shadow, etc.)
+    else if (STRING_PROPS.has(blockProp)) {
+      props[blockProp] = value;
+    }
+    // Font-size can be keyword (small, medium, large, etc.)
+    else if (blockProp === 'fontSize' && /^[a-z-]+$/.test(value)) {
       props[blockProp] = value;
     }
   }
@@ -158,16 +212,13 @@ function extractExtraCss(style: Record<string, string>): string {
     v.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()),
   ));
 
-  // Properties that are interesting for visual fidelity
+  // Properties that are interesting for visual fidelity but not in universal props
   const importantProps = [
-    'font-family', 'font-size', 'font-weight', 'font-style',
-    'line-height', 'letter-spacing', 'text-align', 'text-transform',
-    'text-decoration', 'color', 'background-image', 'background-size',
-    'background-position', 'background-repeat', 'box-shadow', 'text-shadow',
-    'opacity', 'border-top-width', 'border-right-width', 'border-bottom-width',
-    'border-left-width', 'border-top-style', 'border-right-style',
-    'border-bottom-style', 'border-left-style', 'border-top-color',
-    'border-right-color', 'border-bottom-color', 'border-left-color',
+    'font-style', 'text-decoration', 'text-shadow',
+    'background-image', 'background-size', 'background-position', 'background-repeat',
+    'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
+    'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+    'border-right-width', 'border-bottom-width', 'border-left-width',
   ];
 
   for (const prop of importantProps) {
@@ -187,13 +238,11 @@ function buildTextBlock(
   el: ElementSnapshot,
   allElements: ElementSnapshot[],
 ): BaseBlock {
-  // Collect all text content from the subtree
   const elementMap = new Map(allElements.map((e) => [e.importId, e]));
 
   function collectHtml(element: ElementSnapshot): string {
     let html = '';
     if (element.textContent) {
-      // Wrap in appropriate inline tags
       const style = element.computedStyle;
       let text = element.textContent;
       if (style.fontWeight && parseInt(style.fontWeight) >= 700) {
@@ -201,6 +250,12 @@ function buildTextBlock(
       }
       if (style.fontStyle === 'italic') {
         text = `<em>${text}</em>`;
+      }
+      if (style.textDecoration?.includes('underline')) {
+        text = `<u>${text}</u>`;
+      }
+      if (style.textDecoration?.includes('line-through')) {
+        text = `<s>${text}</s>`;
       }
       html += text;
     }
@@ -211,6 +266,8 @@ function buildTextBlock(
           html += '<br>';
         } else if (child.tagName === 'a' && child.attributes.href) {
           html += `<a href="${child.attributes.href}">${collectHtml(child)}</a>`;
+        } else if (child.tagName === 'li') {
+          html += `<li>${collectHtml(child)}</li>`;
         } else {
           html += collectHtml(child);
         }
@@ -222,35 +279,52 @@ function buildTextBlock(
   const contentHtml = collectHtml(el);
   const universalProps = cssToUniversalProps(el.computedStyle);
 
-  // Determine heading level
+  // Determine heading level or list type
   const tag = el.tagName;
   let textTag = 'p';
   if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
     textTag = tag;
+  } else if (tag === 'ul' || tag === 'ol') {
+    textTag = tag;
   }
 
-  return {
-    id: generateBlockId(),
-    type: 'text',
-    props: {
-      ...universalProps,
-      contentHtml: `<${textTag}>${contentHtml}</${textTag}>`,
-      tag: textTag,
-    },
+  // Extract link color from child <a> tags
+  const linkEl = el.childImportIds
+    .map((id) => elementMap.get(id))
+    .find((child) => child?.tagName === 'a');
+  const linkColor = linkEl?.computedStyle.color;
+
+  const props: Record<string, unknown> = {
+    ...universalProps,
+    contentHtml: `<${textTag}>${contentHtml}</${textTag}>`,
+    tag: textTag,
   };
+
+  if (linkColor) props.linkColor = normalizeColor(linkColor);
+
+  return { id: generateBlockId(), type: 'text', props };
 }
 
-function buildImageBlock(el: ElementSnapshot): BaseBlock {
+function buildImageBlock(el: ElementSnapshot, parentEl?: ElementSnapshot): BaseBlock {
   const universalProps = cssToUniversalProps(el.computedStyle);
-  return {
-    id: generateBlockId(),
-    type: 'image',
-    props: {
-      ...universalProps,
-      src: el.attributes.src || '',
-      alt: el.attributes.alt || '',
-    },
+  const props: Record<string, unknown> = {
+    ...universalProps,
+    src: el.attributes.src || el.attributes['data-src'] || '',
+    alt: el.attributes.alt || '',
   };
+
+  // Image link: if parent is <a> with href
+  if (parentEl?.tagName === 'a' && parentEl.attributes.href) {
+    props.href = parentEl.attributes.href;
+    props.linkTarget = parentEl.attributes.target === '_blank' ? '_blank' : '_self';
+  }
+
+  // Responsive image sizing
+  if (el.attributes.loading === 'lazy') props.lazyLoad = true;
+  if (el.attributes.width) props.width = parseInt(el.attributes.width) || undefined;
+  if (el.attributes.height) props.height = parseInt(el.attributes.height) || undefined;
+
+  return { id: generateBlockId(), type: 'image', props };
 }
 
 function buildButtonBlock(el: ElementSnapshot, allElements: ElementSnapshot[]): BaseBlock {
@@ -266,23 +340,253 @@ function buildButtonBlock(el: ElementSnapshot, allElements: ElementSnapshot[]): 
     return text;
   }
 
+  const props: Record<string, unknown> = {
+    ...universalProps,
+    text: getText(el).trim(),
+    href: el.attributes.href || '',
+  };
+
+  // Link target
+  if (el.attributes.target === '_blank') props.linkTarget = '_blank';
+
+  // Accessibility
+  if (el.attributes['aria-label']) props.ariaLabel = el.attributes['aria-label'];
+  if (el.attributes.role) props.role = el.attributes.role;
+
+  // Separate textColor from backgroundColor (color prop is text color on buttons)
+  if (props.color) {
+    props.textColor = props.color;
+    delete props.color;
+  }
+
+  return { id: generateBlockId(), type: 'button', props };
+}
+
+function buildDividerBlock(el?: ElementSnapshot): BaseBlock {
+  const props: Record<string, unknown> = {};
+
+  if (el) {
+    const style = el.computedStyle;
+    // Extract border properties (HR uses border-top by default)
+    const borderColor = style.borderTopColor || style.borderColor || style.color;
+    if (borderColor && borderColor !== 'initial') props.color = normalizeColor(borderColor);
+
+    const borderWidth = style.borderTopWidth || style.borderWidth;
+    if (borderWidth) {
+      const thickness = parseFloat(borderWidth);
+      if (!isNaN(thickness) && thickness > 0) props.thickness = thickness;
+    }
+
+    const borderStyle = style.borderTopStyle || style.borderStyle;
+    if (borderStyle && borderStyle !== 'none' && borderStyle !== 'initial') {
+      props.lineStyle = borderStyle; // solid, dashed, dotted
+    }
+
+    // Width
+    if (style.width && style.width !== 'auto') {
+      props.width = style.width.endsWith('%') ? style.width : parseFloat(style.width) || undefined;
+    }
+
+    // Margin for spacing
+    const universalProps = cssToUniversalProps(style);
+    Object.assign(props, universalProps);
+  }
+
+  return { id: generateBlockId(), type: 'divider', props };
+}
+
+// --- Video Block Builder ---
+
+const VIDEO_URL_PATTERNS: { provider: string; pattern: RegExp }[] = [
+  { provider: 'youtube', pattern: /(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]+)/ },
+  { provider: 'vimeo', pattern: /vimeo\.com\/(?:video\/)?(\d+)/ },
+  { provider: 'wistia', pattern: /wistia\.(?:com|net)\/(?:medias|embed)\/([a-zA-Z0-9]+)/ },
+  { provider: 'loom', pattern: /loom\.com\/(?:share|embed)\/([a-f0-9]+)/ },
+];
+
+function detectVideoProvider(url: string): { provider: string; videoId: string } | null {
+  for (const { provider, pattern } of VIDEO_URL_PATTERNS) {
+    const match = url.match(pattern);
+    if (match) return { provider, videoId: match[1] };
+  }
+  return null;
+}
+
+function buildVideoBlock(el: ElementSnapshot): BaseBlock | null {
+  const universalProps = cssToUniversalProps(el.computedStyle);
+  const props: Record<string, unknown> = { ...universalProps };
+
+  if (el.tagName === 'video') {
+    // HTML5 <video>
+    props.src = el.attributes.src || '';
+    props.provider = 'html5';
+    if (el.attributes.autoplay !== undefined) props.autoplay = true;
+    if (el.attributes.muted !== undefined) props.muted = true;
+    if (el.attributes.loop !== undefined) props.loop = true;
+    if (el.attributes.poster) props.poster = el.attributes.poster;
+    if (el.attributes.title) props.title = el.attributes.title;
+    return { id: generateBlockId(), type: 'video', props };
+  }
+
+  if (el.tagName === 'iframe') {
+    const src = el.attributes.src || el.attributes['data-src'] || '';
+    const detected = detectVideoProvider(src);
+    if (!detected) return null; // Not a video iframe
+
+    props.src = src;
+    props.provider = detected.provider;
+    props.videoId = detected.videoId;
+    if (el.attributes.title) props.title = el.attributes.title;
+    // Parse autoplay from URL params
+    if (src.includes('autoplay=1') || src.includes('autoplay=true')) props.autoplay = true;
+    if (src.includes('mute=1') || src.includes('muted=1')) props.muted = true;
+    if (src.includes('loop=1')) props.loop = true;
+    return { id: generateBlockId(), type: 'video', props };
+  }
+
+  return null;
+}
+
+// --- Form Block Builder ---
+
+const FORM_INPUT_TYPES_MAP: Record<string, string> = {
+  text: 'text',
+  email: 'email',
+  tel: 'phone',
+  phone: 'phone',
+  number: 'text',
+  password: 'text',
+  url: 'text',
+  search: 'text',
+  date: 'date',
+  'datetime-local': 'date',
+  file: 'file',
+  hidden: 'hidden',
+  checkbox: 'checkbox',
+  radio: 'radio',
+};
+
+function buildFormBlock(el: ElementSnapshot, allElements: ElementSnapshot[]): BaseBlock {
+  const universalProps = cssToUniversalProps(el.computedStyle);
+  const elementMap = new Map(allElements.map((e) => [e.importId, e]));
+
+  // Collect all form fields from the subtree
+  const fields: Array<{
+    id: string;
+    type: string;
+    name: string;
+    label: string;
+    placeholder: string;
+    required: boolean;
+    options?: string[];
+  }> = [];
+  let submitText = 'Submit';
+  let formAction = el.attributes.action || '';
+  let formMethod = el.attributes.method || 'POST';
+  let fieldCounter = 0;
+
+  function scanFormElements(element: ElementSnapshot): void {
+    const tag = element.tagName;
+
+    if (tag === 'input' && element.attributes.type !== 'submit') {
+      const inputType = element.attributes.type || 'text';
+      const mappedType = FORM_INPUT_TYPES_MAP[inputType] || 'text';
+      const name = element.attributes.name || `field_${fieldCounter}`;
+      fields.push({
+        id: `ff_${fieldCounter++}`,
+        type: mappedType,
+        name,
+        label: element.attributes['aria-label'] || '',
+        placeholder: element.attributes.placeholder || '',
+        required: element.attributes.required !== undefined,
+        ...(mappedType === 'radio' || mappedType === 'checkbox'
+          ? { options: [element.attributes.value || ''] }
+          : {}),
+      });
+    } else if (tag === 'input' && element.attributes.type === 'submit') {
+      submitText = element.attributes.value || 'Submit';
+    } else if (tag === 'textarea') {
+      fields.push({
+        id: `ff_${fieldCounter++}`,
+        type: 'textarea',
+        name: element.attributes.name || `field_${fieldCounter}`,
+        label: element.attributes['aria-label'] || '',
+        placeholder: element.attributes.placeholder || '',
+        required: element.attributes.required !== undefined,
+      });
+    } else if (tag === 'select') {
+      const options: string[] = [];
+      for (const childId of element.childImportIds) {
+        const child = elementMap.get(childId);
+        if (child?.tagName === 'option') {
+          options.push(child.textContent || child.attributes.value || '');
+        }
+      }
+      fields.push({
+        id: `ff_${fieldCounter++}`,
+        type: 'dropdown',
+        name: element.attributes.name || `field_${fieldCounter}`,
+        label: element.attributes['aria-label'] || '',
+        placeholder: '',
+        required: element.attributes.required !== undefined,
+        options,
+      });
+    } else if (tag === 'button' && (element.attributes.type === 'submit' || !element.attributes.type)) {
+      submitText = element.textContent || 'Submit';
+    } else if (tag === 'label') {
+      // Try to associate label with next field
+      // Labels are consumed by looking at the `for` attribute or as parent
+    }
+
+    // Recurse into children
+    for (const childId of element.childImportIds) {
+      const child = elementMap.get(childId);
+      if (child) scanFormElements(child);
+    }
+  }
+
+  scanFormElements(el);
+
+  // Find labels: scan for <label> elements and match via `for` attribute
+  const subtree = getFormSubtree(el, elementMap);
+  for (const node of subtree) {
+    if (node.tagName === 'label' && node.attributes.for) {
+      const forId = node.attributes.for;
+      // Find the field with matching name or id
+      const field = fields.find((f) => f.name === forId);
+      if (field && node.textContent) {
+        field.label = node.textContent.trim();
+      }
+    }
+  }
+
   return {
     id: generateBlockId(),
-    type: 'button',
+    type: 'form',
     props: {
       ...universalProps,
-      text: getText(el).trim(),
-      href: el.attributes.href || '',
+      fields,
+      submitText,
+      formAction,
+      formMethod,
     },
   };
 }
 
-function buildDividerBlock(): BaseBlock {
-  return {
-    id: generateBlockId(),
-    type: 'divider',
-    props: {},
-  };
+function getFormSubtree(
+  el: ElementSnapshot,
+  elementMap: Map<string, ElementSnapshot>,
+): ElementSnapshot[] {
+  const result: ElementSnapshot[] = [];
+  function collect(element: ElementSnapshot): void {
+    result.push(element);
+    for (const childId of element.childImportIds) {
+      const child = elementMap.get(childId);
+      if (child) collect(child);
+    }
+  }
+  collect(el);
+  return result;
 }
 
 // --- Tier C: Token Map Builder ---
@@ -543,12 +847,40 @@ function buildElementBlock(
   section: DetectedSection,
   sectionIndex: number,
   collectedBlocks: BaseBlock[],
+  parentEl?: ElementSnapshot,
 ): BaseBlock {
   const tag = el.tagName;
+  const elementMap = new Map(allElements.map((e) => [e.importId, e]));
 
-  // Image
+  // Video: <video> or <iframe> with video URL
+  if (tag === 'video' || tag === 'iframe') {
+    const videoBlock = buildVideoBlock(el);
+    if (videoBlock) return videoBlock;
+    // iframe that's not a video: fall through to container/customHtml handling
+  }
+
+  // Form: native <form> elements → native form block with fields
+  if (tag === 'form') {
+    return buildFormBlock(el, allElements);
+  }
+
+  // Image: detect parent <a> for linked images
   if (tag === 'img') {
-    return buildImageBlock(el);
+    return buildImageBlock(el, parentEl);
+  }
+
+  // SVG: treat as image if it has viewBox (likely an icon/illustration)
+  if (tag === 'svg' && el.attributes.viewBox) {
+    return {
+      id: generateBlockId(),
+      type: 'image',
+      props: {
+        ...cssToUniversalProps(el.computedStyle),
+        src: '', // SVGs are inline; editor would need SVG support
+        alt: el.attributes['aria-label'] || '',
+        isSvg: true,
+      },
+    };
   }
 
   // Heading or paragraph with text
@@ -556,18 +888,46 @@ function buildElementBlock(
     return buildTextBlock(el, allElements);
   }
 
-  // Button/link
-  if ((tag === 'a' || tag === 'button') && el.textContent) {
+  // Lists
+  if ((tag === 'ul' || tag === 'ol') && el.childImportIds.length > 0) {
+    return buildTextBlock(el, allElements);
+  }
+
+  // Button/link — but only if it looks like a button (has text, not a nav link)
+  if (tag === 'button' && el.textContent) {
     return buildButtonBlock(el, allElements);
+  }
+  if (tag === 'a' && el.textContent) {
+    // Distinguish buttons from plain links:
+    // If it has background-color, padding, or border-radius it's styled as a button
+    const style = el.computedStyle;
+    const hasButtonStyling =
+      (style.backgroundColor && style.backgroundColor !== 'transparent' && style.backgroundColor !== 'rgba(0, 0, 0, 0)') ||
+      (style.borderRadius && style.borderRadius !== '0px') ||
+      (style.paddingTop && parseFloat(style.paddingTop) >= 8) ||
+      style.display === 'inline-block' || style.display === 'flex';
+
+    // If single child is an <img>, create image block with link
+    const visibleChildren = el.childImportIds
+      .map((id) => elementMap.get(id))
+      .filter((child): child is ElementSnapshot => child !== undefined && child.isVisible);
+    if (visibleChildren.length === 1 && visibleChildren[0].tagName === 'img') {
+      return buildImageBlock(visibleChildren[0], el);
+    }
+
+    if (hasButtonStyling) {
+      return buildButtonBlock(el, allElements);
+    }
+    // Plain text link: treat as text block with the link wrapped
+    return buildTextBlock(el, allElements);
   }
 
   // Horizontal rule
   if (tag === 'hr') {
-    return buildDividerBlock();
+    return buildDividerBlock(el);
   }
 
   // Container-like element with children: recurse
-  const elementMap = new Map(allElements.map((e) => [e.importId, e]));
   const visibleChildren = el.childImportIds
     .map((id) => elementMap.get(id))
     .filter((child): child is ElementSnapshot => child !== undefined && child.isVisible);
@@ -577,7 +937,7 @@ function buildElementBlock(
     const childIds: string[] = [];
 
     for (const child of visibleChildren) {
-      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex, collectedBlocks);
+      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex, collectedBlocks, el);
       collectedBlocks.push(childBlock);
       childIds.push(childBlock.id);
     }

@@ -79,9 +79,31 @@ function containsTag(elements: ElementSnapshot[], tag: string): boolean {
   return elements.some((el) => el.tagName === tag);
 }
 
-function hasNavLinks(elements: ElementSnapshot[]): boolean {
+function hasNavLinks(elements: ElementSnapshot[], rootEl?: ElementSnapshot): boolean {
+  // Nav-like link patterns: multiple short links at shallow depth, often inside <nav> or
+  // a compact container. Content sections commonly have 3+ links too (footer links,
+  // feature descriptions with CTAs), so we check for nav-like characteristics.
   const links = elements.filter((el) => el.tagName === 'a');
-  return links.length >= 3;
+  if (links.length < 3) return false;
+
+  // Check if there's a <nav> tag — strong signal
+  if (elements.some((el) => el.tagName === 'nav')) return true;
+
+  // Check if root element has nav-like attributes
+  if (rootEl) {
+    const cls = rootEl.attributes.class || '';
+    const id = rootEl.attributes.id || '';
+    if (/nav|menu|header/i.test(cls) || /nav|menu|header/i.test(id)) return true;
+  }
+
+  // Heuristic: nav links are short (< 30 chars each) and there are many relative to content
+  const shortLinks = links.filter((el) => el.textContent.length > 0 && el.textContent.length < 30);
+  const textElements = elements.filter((el) =>
+    ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'label'].includes(el.tagName) && el.textContent.length > 30,
+  );
+
+  // If most links are short AND there's little long-form text, it's nav-like
+  return shortLinks.length >= 3 && textElements.length <= 2 && shortLinks.length >= links.length * 0.7;
 }
 
 function hasCtaButton(elements: ElementSnapshot[]): boolean {
@@ -140,8 +162,8 @@ function classifySection(
     return { type: 'footer', confidence: 0.9 };
   }
 
-  // Navigation check
-  if (hasNavLinks(sectionElements) && !hasBigHeading(sectionElements)) {
+  // Navigation check — tightened to avoid false positives on content sections
+  if (hasNavLinks(sectionElements, rootEl) && !hasBigHeading(sectionElements)) {
     return { type: 'header', confidence: 0.7 };
   }
 
@@ -191,8 +213,13 @@ function classifySection(
     return { type: 'features', confidence: 0.5 };
   }
 
-  // Footer heuristics: copyright, contact info, near bottom
-  if (isLast && containsText(sectionElements, /©|copyright|all rights reserved/i)) {
+  // Footer heuristics: copyright text, footer-like class names, or last section
+  if (containsText(sectionElements, /©|copyright|all rights reserved/i)) {
+    return { type: 'footer', confidence: isLast ? 0.8 : 0.6 };
+  }
+  const rootCls = rootEl.attributes.class || '';
+  const rootId = rootEl.attributes.id || '';
+  if (/footer|foot/i.test(rootCls) || /footer|foot/i.test(rootId)) {
     return { type: 'footer', confidence: 0.7 };
   }
 
