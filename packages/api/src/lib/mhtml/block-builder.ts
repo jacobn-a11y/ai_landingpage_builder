@@ -437,7 +437,7 @@ function buildSectionBlocks(
     const columnChildIds: string[] = [];
 
     for (const child of layout.children) {
-      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex);
+      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex, blocks);
       blocks.push(childBlock);
       columnChildIds.push(childBlock.id);
     }
@@ -460,7 +460,7 @@ function buildSectionBlocks(
     const gridChildIds: string[] = [];
 
     for (const child of layout.children) {
-      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex);
+      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex, blocks);
       blocks.push(childBlock);
       gridChildIds.push(childBlock.id);
     }
@@ -484,7 +484,7 @@ function buildSectionBlocks(
       .filter((el): el is ElementSnapshot => el !== undefined && el.isVisible);
 
     for (const child of directChildren) {
-      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex);
+      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex, blocks);
       blocks.push(childBlock);
       childBlockIds.push(childBlock.id);
     }
@@ -532,6 +532,7 @@ function buildSectionBlocks(
 
 /**
  * Build a block for a single element.
+ * All nested blocks are collected into `collectedBlocks` for flat registration.
  */
 function buildElementBlock(
   el: ElementSnapshot,
@@ -541,6 +542,7 @@ function buildElementBlock(
   tier: 'A' | 'B',
   section: DetectedSection,
   sectionIndex: number,
+  collectedBlocks: BaseBlock[],
 ): BaseBlock {
   const tag = el.tagName;
 
@@ -575,9 +577,9 @@ function buildElementBlock(
     const childIds: string[] = [];
 
     for (const child of visibleChildren) {
-      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex);
+      const childBlock = buildElementBlock(child, allElements, scopedStyles, provenance, tier, section, sectionIndex, collectedBlocks);
+      collectedBlocks.push(childBlock);
       childIds.push(childBlock.id);
-      // Note: child blocks are pushed to the flat blocks dict in the caller
     }
 
     const stackBlock: BaseBlock = {

@@ -217,8 +217,8 @@ export function detectSections(snapshot: PageSnapshot): DetectedSection[] {
   const rootEl = elementMap.get(rootImportId);
   if (!rootEl) return [];
 
-  // Get top-level children of body
-  const topLevelChildren = getDirectChildren(elements, rootImportId)
+  // Get top-level children of body, unwrapping generic wrapper divs
+  let topLevelChildren = getDirectChildren(elements, rootImportId)
     .filter((el) => el.isVisible && !el.isOverlay)
     .sort((a, b) => a.boundingBox.y - b.boundingBox.y);
 
@@ -233,9 +233,79 @@ export function detectSections(snapshot: PageSnapshot): DetectedSection[] {
     }];
   }
 
-  // Strategy 1: Use landmark elements if present
-  const landmarkChildren = topLevelChildren.filter((el) => LANDMARK_TAGS.has(el.tagName));
-  const candidateRoots = landmarkChildren.length >= 2 ? landmarkChildren : topLevelChildren;
+  // Unwrap non-landmark wrapper divs to find real section candidates.
+  const NON_LANDMARK_WRAPPERS = new Set(['div', 'span']);
+
+  // Helper: unwrap nested single-child wrappers
+  function unwrapSingleChild(children: ElementSnapshot[], maxDepth: number): ElementSnapshot[] {
+    let result = children;
+    for (let d = 0; d < maxDepth; d++) {
+      if (result.length !== 1) break;
+      const sole = result[0];
+      if (LANDMARK_TAGS.has(sole.tagName)) break;
+      if (!NON_LANDMARK_WRAPPERS.has(sole.tagName)) break;
+      const inner = getDirectChildren(elements, sole.importId)
+        .filter((el) => el.isVisible && !el.isOverlay)
+        .sort((a, b) => a.boundingBox.y - b.boundingBox.y);
+      if (inner.length === 0) break;
+      result = inner;
+    }
+    return result;
+  }
+
+  // Case 1: Single wrapper (e.g. <div id="root">, <div id="__next">)
+  topLevelChildren = unwrapSingleChild(topLevelChildren, 3);
+
+  // Case 2: Multiple top-level children but no landmarks — look for a dominant
+  // content wrapper that contains landmarks (common with HubSpot, Webflow, etc.)
+  let landmarkChildren = topLevelChildren.filter((el) => LANDMARK_TAGS.has(el.tagName));
+  if (landmarkChildren.length < 2 && topLevelChildren.length > 1) {
+    // Find the candidate with the most subtree landmarks
+    let bestCandidate: ElementSnapshot | null = null;
+    let bestLandmarkCount = 0;
+
+    for (const candidate of topLevelChildren) {
+      if (!NON_LANDMARK_WRAPPERS.has(candidate.tagName)) continue;
+      const subtree = getSubtree(elements, candidate.importId);
+      const subtreeLandmarks = subtree.filter((el) => LANDMARK_TAGS.has(el.tagName));
+      if (subtreeLandmarks.length > bestLandmarkCount) {
+        bestLandmarkCount = subtreeLandmarks.length;
+        bestCandidate = candidate;
+      }
+    }
+
+    if (bestCandidate && bestLandmarkCount >= 2) {
+      // Drill into the best candidate, unwrapping nested wrappers
+      let contentChildren = getDirectChildren(elements, bestCandidate.importId)
+        .filter((el) => el.isVisible && !el.isOverlay)
+        .sort((a, b) => a.boundingBox.y - b.boundingBox.y);
+      contentChildren = unwrapSingleChild(contentChildren, 3);
+
+      // If direct children still don't have landmarks, look one more level
+      let directLandmarks = contentChildren.filter((el) => LANDMARK_TAGS.has(el.tagName));
+      if (directLandmarks.length < 2 && contentChildren.length <= 2) {
+        for (const wrapper of contentChildren) {
+          if (!NON_LANDMARK_WRAPPERS.has(wrapper.tagName)) continue;
+          const innerChildren = getDirectChildren(elements, wrapper.importId)
+            .filter((el) => el.isVisible && !el.isOverlay)
+            .sort((a, b) => a.boundingBox.y - b.boundingBox.y);
+          const innerLandmarks = innerChildren.filter((el) => LANDMARK_TAGS.has(el.tagName));
+          if (innerLandmarks.length >= 2 || innerChildren.length > contentChildren.length) {
+            contentChildren = innerChildren;
+            directLandmarks = contentChildren.filter((el) => LANDMARK_TAGS.has(el.tagName));
+            break;
+          }
+        }
+      }
+
+      topLevelChildren = contentChildren;
+      landmarkChildren = directLandmarks;
+    }
+  }
+
+  // Strategy 1: Use all top-level children as candidates. Landmarks are used
+  // to trigger section breaks in the grouping logic below, not to filter candidates.
+  const candidateRoots = topLevelChildren;
 
   // Strategy 2: Merge adjacent non-landmark elements that are close together
   const sections: DetectedSection[] = [];

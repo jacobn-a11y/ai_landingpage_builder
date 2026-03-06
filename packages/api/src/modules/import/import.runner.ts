@@ -158,7 +158,7 @@ async function runImportPipeline(
     const { document } = parseHTML(fullHtml);
 
     // Build element snapshots from DOM (simplified, no geometry)
-    const elements = buildDomSnapshot(document.body);
+    const { elements, rootImportId } = buildDomSnapshot(document.body);
 
     timings.render = Date.now() - renderStart;
     await updateHeartbeat(jobId);
@@ -171,7 +171,7 @@ async function runImportPipeline(
       viewport: { width: 1440, height: 900, label: 'desktop' },
       documentSize: { width: 1440, height: 5000 }, // Estimated
       elements,
-      rootImportId: elements[0]?.importId || 'imp_0',
+      rootImportId,
     };
 
     const sections: DetectedSection[] = detectSections(pageSnapshot);
@@ -286,7 +286,7 @@ async function runImportPipeline(
  * Build element snapshots from linkedom DOM (no geometry data).
  * This is the fallback when Chromium is not available.
  */
-function buildDomSnapshot(body: any): import('../../lib/mhtml/extract-snapshot.js').ElementSnapshot[] {
+function buildDomSnapshot(body: any): { elements: import('../../lib/mhtml/extract-snapshot.js').ElementSnapshot[]; rootImportId: string } {
   const elements: import('../../lib/mhtml/extract-snapshot.js').ElementSnapshot[] = [];
   let idCounter = 0;
 
@@ -341,8 +341,8 @@ function buildDomSnapshot(body: any): import('../../lib/mhtml/extract-snapshot.j
     return id;
   }
 
-  traverse(body, null, 0);
-  return elements;
+  const rootId = traverse(body, null, 0) || 'imp_0';
+  return { elements, rootImportId: rootId };
 }
 
 function parseInlineStyle(style: string): Record<string, string> {
