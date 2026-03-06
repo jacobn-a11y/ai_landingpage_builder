@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import passport from 'passport';
@@ -33,6 +34,7 @@ const corsOptions = {
 
 export const app = express();
 
+app.use(helmet());
 app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(
@@ -43,14 +45,15 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   })
 );
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Dev-only: bypass auth on localhost when BYPASS_AUTH_LOCALHOST=1
 if (!process.env.VITEST && process.env.BYPASS_AUTH_LOCALHOST === '1') {
