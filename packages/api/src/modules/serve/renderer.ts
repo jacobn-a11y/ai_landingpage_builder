@@ -42,6 +42,11 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Strip characters that could break out of a CSS value context */
+function sanitizeCssValue(val: string): string {
+  return val.replace(/[;{}()<>\\/"']/g, '');
+}
+
 function getUniversalStyleString(props: Record<string, unknown>): string {
   const styles: string[] = [];
   const num = (v: unknown) => (typeof v === 'number' && !isNaN(v) ? v : undefined);
@@ -54,7 +59,7 @@ function getUniversalStyleString(props: Record<string, unknown>): string {
   if (num(props.paddingRight) != null) styles.push(`padding-right:${props.paddingRight}px`);
   if (num(props.paddingBottom) != null) styles.push(`padding-bottom:${props.paddingBottom}px`);
   if (num(props.paddingLeft) != null) styles.push(`padding-left:${props.paddingLeft}px`);
-  if (str(props.backgroundColor)) styles.push(`background-color:${props.backgroundColor}`);
+  if (str(props.backgroundColor)) styles.push(`background-color:${sanitizeCssValue(String(props.backgroundColor))}`);
   if (num(props.borderRadius) != null) styles.push(`border-radius:${props.borderRadius}px`);
   if (props.width != null) styles.push(`width:${typeof props.width === 'number' ? props.width + 'px' : props.width}`);
   if (num(props.zIndex) != null) styles.push(`z-index:${props.zIndex}`);
@@ -110,7 +115,7 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       const style: string[] = [];
       if (props.maxWidth != null) style.push(`max-width:${props.maxWidth}px`);
       if (props.padding != null) style.push(`padding:${props.padding}px`);
-      if (props.backgroundColor) style.push(`background-color:${props.backgroundColor}`);
+      if (props.backgroundColor) style.push(`background-color:${sanitizeCssValue(String(props.backgroundColor))}`);
       const styleAttr = style.length ? ` style="${escapeHtml(style.join(';'))}"` : '';
       const inner = children.map((id) => blocks[id]).filter(Boolean).map((b) => renderBlock(b, blocks, depth + 1, ctx)).join('');
       result = `<section class="w-full"${styleAttr}><div class="max-w-[1200px] mx-auto">${inner}</div></section>`;
@@ -454,7 +459,7 @@ function getStickyBarsHtml(bars: StickyBarData[]): string {
     .map((bar) => {
       const inner = renderOverlayContent(bar.blocks, bar.root);
       const pos = bar.position === 'top' ? 'top:0' : 'bottom:0';
-      const bg = bar.backgroundColor ? `background-color:${bar.backgroundColor}` : 'background-color:#1e293b';
+      const bg = bar.backgroundColor ? `background-color:${sanitizeCssValue(bar.backgroundColor)}` : 'background-color:#1e293b';
       const style = `position:fixed;left:0;right:0;${pos};z-index:9999;${bg};color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;max-width:100%;box-sizing:border-box`;
       return `<div class="rp-sticky-bar" data-id="${escapeHtml(bar.id)}" style="${escapeHtml(style)}">${inner}</div>`;
     })
@@ -534,8 +539,8 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   const ogTitle = pageSettings?.seoOgTitle ?? pageName;
   const ogImage = pageSettings?.seoOgImage ?? '';
   const bodyStyle: string[] = [];
-  if (pageSettings?.backgroundColor) bodyStyle.push(`background-color:${pageSettings.backgroundColor}`);
-  if (pageSettings?.fontFamily) bodyStyle.push(`font-family:${pageSettings.fontFamily}`);
+  if (pageSettings?.backgroundColor) bodyStyle.push(`background-color:${sanitizeCssValue(pageSettings.backgroundColor)}`);
+  if (pageSettings?.fontFamily) bodyStyle.push(`font-family:${sanitizeCssValue(pageSettings.fontFamily)}`);
   const bodyStyleAttr = bodyStyle.length ? ` style="${escapeHtml(bodyStyle.join(';'))}"` : '';
 
   return `<!DOCTYPE html>
