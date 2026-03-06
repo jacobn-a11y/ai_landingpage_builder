@@ -1,4 +1,6 @@
 import { prisma } from '../../shared/db.js';
+import { isSafeWebhookUrl } from '../../shared/validate-url.js';
+import { decryptOrFallback } from '../../shared/crypto.js';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 2000;
@@ -39,7 +41,7 @@ export async function queueZapierDelivery(submissionId: string): Promise<void> {
 
   for (const integration of integrations) {
     const webhookUrl = getWebhookUrl(integration);
-    if (!webhookUrl) continue;
+    if (!webhookUrl || !isSafeWebhookUrl(webhookUrl)) continue;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
@@ -96,7 +98,7 @@ export async function queueZapierDelivery(submissionId: string): Promise<void> {
 function getWebhookUrl(integration: { configEncrypted: string | null }): string | null {
   if (!integration.configEncrypted) return null;
   try {
-    const config = JSON.parse(integration.configEncrypted) as { webhookUrl?: string };
+    const config = JSON.parse(decryptOrFallback(integration.configEncrypted)) as { webhookUrl?: string };
     return config.webhookUrl || null;
   } catch {
     return null;

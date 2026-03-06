@@ -56,7 +56,15 @@ export function BlockText({
 
   const handleLink = () => {
     const url = prompt('Enter URL:');
-    if (url) document.execCommand('createLink', false, url);
+    if (url) {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return;
+        document.execCommand('createLink', false, parsed.href);
+      } catch {
+        // Invalid URL — ignore
+      }
+    }
     divRef.current?.focus();
   };
 
@@ -85,7 +93,7 @@ export function BlockText({
           contentEditable
           suppressContentEditableWarning
           className="outline-none empty:before:content-['Click_to_edit...'] empty:before:text-muted-foreground prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={!editing ? { __html: displayContent || '' } : undefined}
+          dangerouslySetInnerHTML={!editing ? { __html: sanitizeHtml(displayContent || '') } : undefined}
           onFocus={() => {
             setEditing(true);
             if (divRef.current) divRef.current.innerHTML = displayContent || '';

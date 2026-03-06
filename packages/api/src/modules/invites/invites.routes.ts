@@ -78,6 +78,6 @@ invitesRouter.get('/accept', async (req: Request, res: Response) => {
   req.session.inviteWorkspaceId = invite.workspaceId;
   req.session.inviteRole = invite.role;
   req.session.inviteEmail = invite.email;
-  const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
-  res.redirect(`${webUrl}/api/v1/auth/google`);
+  // Redirect to auth endpoint on the same host (works with both proxy and direct API access)
+  res.redirect('/api/v1/auth/google');
 });

@@ -20,6 +20,7 @@ type AuthContextValue = AuthState & {
   logout: () => Promise<void>;
   refetch: () => Promise<void>;
   isAdmin: boolean;
+  canEdit: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     refetch,
     isAdmin: state.role === 'Admin',
+    canEdit: state.role === 'Admin' || state.role === 'Editor',
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -80,36 +80,46 @@ submissionsRouter.post('/', postRateLimiter, async (req: Request, res: Response)
 
 // GET /api/v1/submissions - list (authenticated, Editor+)
 submissionsRouter.get('/', ...readMiddleware, async (req: Request, res: Response) => {
-  const workspaceId = req.session!.workspaceId!;
-  const pageId = req.query.pageId as string | undefined;
+  try {
+    const workspaceId = req.session!.workspaceId!;
+    const pageId = req.query.pageId as string | undefined;
 
-  const where: { workspaceId: string; pageId?: string } = { workspaceId };
-  if (pageId) where.pageId = pageId;
+    const where: { workspaceId: string; pageId?: string } = { workspaceId };
+    if (pageId) where.pageId = pageId;
 
-  const submissions = await prisma.submission.findMany({
-    where,
-    include: { page: { select: { id: true, name: true, slug: true } } },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-  });
+    const submissions = await prisma.submission.findMany({
+      where,
+      include: { page: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
 
-  res.json({ submissions });
+    res.json({ submissions });
+  } catch (err) {
+    console.error('[submissions] GET list error:', err);
+    res.status(500).json({ error: 'Failed to load submissions' });
+  }
 });
 
 // GET /api/v1/submissions/:id - single submission
 submissionsRouter.get('/:id', ...readMiddleware, async (req: Request, res: Response) => {
-  const workspaceId = req.session!.workspaceId!;
-  const { id } = req.params;
+  try {
+    const workspaceId = req.session!.workspaceId!;
+    const { id } = req.params;
 
-  const submission = await prisma.submission.findFirst({
-    where: { id, workspaceId },
-    include: { page: { select: { id: true, name: true, slug: true } } },
-  });
+    const submission = await prisma.submission.findFirst({
+      where: { id, workspaceId },
+      include: { page: { select: { id: true, name: true, slug: true } } },
+    });
 
-  if (!submission) {
-    res.status(404).json({ error: 'Submission not found' });
-    return;
+    if (!submission) {
+      res.status(404).json({ error: 'Submission not found' });
+      return;
+    }
+
+    res.json({ submission });
+  } catch (err) {
+    console.error('[submissions] GET detail error:', err);
+    res.status(500).json({ error: 'Failed to load submission' });
   }
-
-  res.json({ submission });
 });

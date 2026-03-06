@@ -93,6 +93,7 @@ function applyRedirects(redirects: unknown, path: string): { redirect: string; s
 
 // GET /api/v1/serve/demo/:workspaceId/:path*
 serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
+  try {
   const { workspaceId } = req.params;
   const path = req.params[0] ?? '';
   const pathSegments = path.split('/').filter(Boolean);
@@ -108,12 +109,16 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
   });
 
   if (!page || !page.lastPublishedContentJson) {
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { notFoundRedirectUrl: true } });
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
 
   const config = (page.publishConfig ?? {}) as { targetType?: string; status?: string };
   if (config.targetType !== 'demo' || config.status !== 'published') {
+    const ws = page.workspace;
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
@@ -150,6 +155,10 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
+  } catch (err) {
+    console.error('[serve] demo route error:', err);
+    res.status(500).send('Internal server error');
+  }
 });
 
 // GET /api/v1/serve/demo/:workspaceId - redirect to first segment
@@ -159,6 +168,7 @@ serveRouter.get('/demo/:workspaceId', async (req: Request, res: Response) => {
 
 // GET /api/v1/serve/domain/:domainId/* - custom domain
 serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
+  try {
   const { domainId } = req.params;
   const path = req.params[0] ?? '';
   const pathSegments = path.split('/').filter(Boolean);
@@ -233,12 +243,16 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
         return;
       }
     }
+    const ws = domain.workspace;
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
 
   const config = (page.publishConfig ?? {}) as { domainId?: string; targetType?: string; status?: string };
   if (config.domainId !== domainId || config.targetType !== 'custom' || config.status !== 'published') {
+    const ws = domain.workspace;
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
@@ -278,10 +292,15 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
+  } catch (err) {
+    console.error('[serve] domain route error:', err);
+    res.status(500).send('Internal server error');
+  }
 });
 
 // GET /api/v1/serve/preview/:pageId - auth-protected draft preview (uses contentJson, not lastPublishedContentJson)
 serveRouter.get('/preview/:pageId', requireAuth, async (req: Request, res: Response) => {
+  try {
   const workspaceId = req.session?.workspaceId;
   if (!workspaceId) {
     res.status(401).json({ error: 'Authentication required' });
@@ -330,4 +349,8 @@ serveRouter.get('/preview/:pageId', requireAuth, async (req: Request, res: Respo
   });
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
+  } catch (err) {
+    console.error('[serve] preview route error:', err);
+    res.status(500).send('Internal server error');
+  }
 });

@@ -3,31 +3,12 @@ import { prisma } from '../../shared/db.js';
 import { requireAuth, requireMinRole } from '../auth/auth.middleware.js';
 import { requireWorkspace } from '../workspace/workspace.middleware.js';
 import { detectForms, suggestCanonicalField } from './pages.forms.js';
+import { slugify, generateUniqueSlug } from '../../shared/slugify.js';
 
 export const pagesRouter = Router();
 
 const readMiddleware = [requireAuth, requireWorkspace];
 const writeMiddleware = [requireAuth, requireWorkspace, requireMinRole('Editor')];
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function generateUniqueSlug(base: string, existing: string[]): string {
-  let slug = slugify(base) || 'page';
-  let candidate = slug;
-  let n = 1;
-  while (existing.includes(candidate)) {
-    candidate = `${slug}-${n}`;
-    n++;
-  }
-  return candidate;
-}
 
 pagesRouter.post('/', ...writeMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
@@ -44,16 +25,6 @@ pagesRouter.post('/', ...writeMiddleware, async (req: Request, res: Response) =>
     return;
   }
 
-  const existingSlugs = (
-    await prisma.page.findMany({
-      where: { workspaceId },
-      select: { slug: true },
-    })
-  ).map((p) => p.slug);
-
-  const pageSlug = slug ? slugify(slug) || 'page' : slugify(trimmed) || 'page';
-  const uniqueSlug = generateUniqueSlug(pageSlug, existingSlugs);
-
   if (folderId != null) {
     const folder = await prisma.folder.findFirst({
       where: { id: folderId, workspaceId },
@@ -64,18 +35,31 @@ pagesRouter.post('/', ...writeMiddleware, async (req: Request, res: Response) =>
     }
   }
 
-  const page = await prisma.page.create({
-    data: {
-      workspaceId,
-      name: trimmed,
-      slug: uniqueSlug,
-      folderId: folderId || null,
-      contentJson: contentJson ?? {},
-      scripts: scripts ?? {},
-      publishConfig: publishConfig ?? {},
-      scheduleConfig: scheduleConfig ?? {},
-    },
-    include: { formBindings: true },
+  const pageSlug = slug ? slugify(slug) || 'page' : slugify(trimmed) || 'page';
+
+  const page = await prisma.$transaction(async (tx) => {
+    const existingSlugs = (
+      await tx.page.findMany({
+        where: { workspaceId },
+        select: { slug: true },
+      })
+    ).map((p) => p.slug);
+
+    const uniqueSlug = generateUniqueSlug(pageSlug, existingSlugs);
+
+    return tx.page.create({
+      data: {
+        workspaceId,
+        name: trimmed,
+        slug: uniqueSlug,
+        folderId: folderId || null,
+        contentJson: contentJson ?? {},
+        scripts: scripts ?? {},
+        publishConfig: publishConfig ?? {},
+        scheduleConfig: scheduleConfig ?? {},
+      },
+      include: { formBindings: true },
+    });
   });
   res.status(201).json({ page });
 });
@@ -101,6 +85,7 @@ pagesRouter.get('/', ...readMiddleware, async (req: Request, res: Response) => {
       slug: true,
       folderId: true,
       version: true,
+      publishConfig: true,
       createdAt: true,
       formBindings: true,
     },
@@ -307,45 +292,47 @@ pagesRouter.post('/:id/clone', ...writeMiddleware, async (req: Request, res: Res
   const baseName = name && typeof name === 'string' ? name.trim() : `${source.name} (Copy)`;
   const baseSlug = slug && typeof slug === 'string' ? slug : `${source.slug}-copy`;
 
-  const existingSlugs = (
-    await prisma.page.findMany({
-      where: { workspaceId },
-      select: { slug: true },
-    })
-  ).map((p) => p.slug);
-  const uniqueSlug = generateUniqueSlug(baseSlug, existingSlugs);
+  const page = await prisma.$transaction(async (tx) => {
+    const existingSlugs = (
+      await tx.page.findMany({
+        where: { workspaceId },
+        select: { slug: true },
+      })
+    ).map((p) => p.slug);
+    const uniqueSlug = generateUniqueSlug(baseSlug, existingSlugs);
 
-  const cloned = await prisma.page.create({
-    data: {
-      workspaceId,
-      name: baseName,
-      slug: uniqueSlug,
-      folderId: source.folderId,
-      contentJson: (source.contentJson ?? {}) as object,
-      lastPublishedContentJson: (source.lastPublishedContentJson ?? {}) as object,
-      scripts: (source.scripts ?? {}) as object,
-      publishConfig: {},
-      scheduleConfig: {},
-      version: 1,
-    },
-  });
-
-  for (const b of source.formBindings) {
-    await prisma.pageFormBinding.create({
+    const cloned = await tx.page.create({
       data: {
-        pageId: cloned.id,
-        formId: b.formId,
-        blockId: b.blockId,
-        type: b.type,
-        selector: b.selector,
-        fieldMappings: (b.fieldMappings ?? {}) as object,
+        workspaceId,
+        name: baseName,
+        slug: uniqueSlug,
+        folderId: source.folderId,
+        contentJson: (source.contentJson ?? {}) as object,
+        lastPublishedContentJson: (source.lastPublishedContentJson ?? {}) as object,
+        scripts: (source.scripts ?? {}) as object,
+        publishConfig: {},
+        scheduleConfig: {},
+        version: 1,
       },
     });
-  }
 
-  const page = await prisma.page.findUnique({
-    where: { id: cloned.id },
-    include: { formBindings: true },
+    for (const b of source.formBindings) {
+      await tx.pageFormBinding.create({
+        data: {
+          pageId: cloned.id,
+          formId: b.formId,
+          blockId: b.blockId,
+          type: b.type,
+          selector: b.selector,
+          fieldMappings: (b.fieldMappings ?? {}) as object,
+        },
+      });
+    }
+
+    return tx.page.findUnique({
+      where: { id: cloned.id },
+      include: { formBindings: true },
+    });
   });
   res.status(201).json({ page });
 });

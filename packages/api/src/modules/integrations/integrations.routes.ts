@@ -3,6 +3,8 @@ import { prisma } from '../../shared/db.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 import { requireWorkspace } from '../workspace/workspace.middleware.js';
 import { INTEGRATION_TYPES } from './integrations.types.js';
+import { isSafeWebhookUrl } from '../../shared/validate-url.js';
+import { encrypt, decryptOrFallback } from '../../shared/crypto.js';
 
 export const integrationsRouter = Router();
 
@@ -44,7 +46,7 @@ integrationsRouter.get('/:id', ...adminMiddleware, async (req: Request, res: Res
   let configDisplay: unknown = null;
   if (integration.configEncrypted) {
     try {
-      const config = JSON.parse(integration.configEncrypted) as Record<string, unknown>;
+      const config = JSON.parse(decryptOrFallback(integration.configEncrypted)) as Record<string, unknown>;
       if (config.webhookUrl) {
         const url = config.webhookUrl as string;
         configDisplay = {
@@ -83,7 +85,12 @@ integrationsRouter.post('/', ...adminMiddleware, async (req: Request, res: Respo
       res.status(400).json({ error: 'config.webhookUrl is required for Zapier' });
       return;
     }
-    configEncrypted = JSON.stringify({ webhookUrl: webhookUrl.trim() });
+    const trimmedUrl = webhookUrl.trim();
+    if (!isSafeWebhookUrl(trimmedUrl)) {
+      res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
+      return;
+    }
+    configEncrypted = encrypt(JSON.stringify({ webhookUrl: trimmedUrl }));
   }
 
   const integration = await prisma.integration.create({
@@ -127,7 +134,12 @@ integrationsRouter.patch('/:id', ...adminMiddleware, async (req: Request, res: R
         res.status(400).json({ error: 'config.webhookUrl must be a string' });
         return;
       }
-      configEncrypted = JSON.stringify({ webhookUrl: webhookUrl.trim() });
+      const trimmedUrl = webhookUrl.trim();
+      if (!isSafeWebhookUrl(trimmedUrl)) {
+        res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
+        return;
+      }
+      configEncrypted = encrypt(JSON.stringify({ webhookUrl: trimmedUrl }));
     }
   }
 
@@ -168,7 +180,7 @@ integrationsRouter.post('/:id/test', ...adminMiddleware, async (req: Request, re
   let webhookUrl: string | null = null;
   if (integration.configEncrypted) {
     try {
-      const config = JSON.parse(integration.configEncrypted) as { webhookUrl?: string };
+      const config = JSON.parse(decryptOrFallback(integration.configEncrypted)) as { webhookUrl?: string };
       webhookUrl = config.webhookUrl || null;
     } catch {
       // ignore
@@ -177,6 +189,11 @@ integrationsRouter.post('/:id/test', ...adminMiddleware, async (req: Request, re
 
   if (!webhookUrl) {
     res.status(400).json({ error: 'Webhook URL not configured' });
+    return;
+  }
+
+  if (!isSafeWebhookUrl(webhookUrl)) {
+    res.status(400).json({ error: 'Webhook URL targets a private network' });
     return;
   }
 
