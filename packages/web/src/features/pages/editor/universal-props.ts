@@ -1,5 +1,6 @@
 /**
- * Universal element properties: margin, padding, background, border, width.
+ * Universal element properties: margin, padding, background, border (4-corner radius,
+ * style, width, color), opacity, box shadow, device visibility, width, z-index.
  * Applied to all blocks.
  */
 
@@ -15,9 +16,21 @@ export interface UniversalProps {
   paddingBottom?: number;
   paddingLeft?: number;
   backgroundColor?: string;
+  borderTopLeftRadius?: number;
+  borderTopRightRadius?: number;
+  borderBottomRightRadius?: number;
+  borderBottomLeftRadius?: number;
   borderRadius?: number;
   borderWidth?: number;
   borderColor?: string;
+  borderStyle?: string;
+  opacity?: number;
+  boxShadowOffsetX?: number;
+  boxShadowOffsetY?: number;
+  boxShadowBlur?: number;
+  boxShadowSpread?: number;
+  boxShadowColor?: string;
+  visibleOn?: 'all' | 'desktop' | 'tablet' | 'mobile';
   width?: number | string;
   maxWidth?: number | string;
   minWidth?: number | string;
@@ -41,9 +54,36 @@ export function getUniversalStyle(props: Record<string, unknown>): string {
   const pl = num(props.paddingLeft); if (pl != null) styles.push(`padding-left:${pl}px`);
 
   const bg = str(props.backgroundColor); if (bg) styles.push(`background-color:${bg}`);
-  const br = num(props.borderRadius); if (br != null) styles.push(`border-radius:${br}px`);
+
+  // 4-corner radius
+  const brTL = num(props.borderTopLeftRadius);
+  const brTR = num(props.borderTopRightRadius);
+  const brBR = num(props.borderBottomRightRadius);
+  const brBL = num(props.borderBottomLeftRadius);
+  const brAll = num(props.borderRadius);
+  if (brTL != null || brTR != null || brBR != null || brBL != null) {
+    styles.push(`border-radius:${brTL ?? 0}px ${brTR ?? 0}px ${brBR ?? 0}px ${brBL ?? 0}px`);
+  } else if (brAll != null) {
+    styles.push(`border-radius:${brAll}px`);
+  }
+
   const bw = num(props.borderWidth); if (bw != null) styles.push(`border-width:${bw}px`);
-  const bc = str(props.borderColor); if (bc) styles.push(`border-color:${bc};border-style:solid`);
+  const bc = str(props.borderColor); if (bc) styles.push(`border-color:${bc}`);
+  const bs = str(props.borderStyle); if (bs) styles.push(`border-style:${bs}`);
+  if (bc && !bs) styles.push('border-style:solid');
+
+  // Opacity
+  const op = num(props.opacity); if (op != null) styles.push(`opacity:${op / 100}`);
+
+  // Box shadow
+  const sx = num(props.boxShadowOffsetX);
+  const sy = num(props.boxShadowOffsetY);
+  const sb = num(props.boxShadowBlur);
+  const ss = num(props.boxShadowSpread);
+  const sc = str(props.boxShadowColor);
+  if (sx != null || sy != null || sb != null || ss != null) {
+    styles.push(`box-shadow:${sx ?? 0}px ${sy ?? 0}px ${sb ?? 0}px ${ss ?? 0}px ${sc ?? 'rgba(0,0,0,0.2)'}`);
+  }
 
   const w = props.width; if (w != null) styles.push(`width:${typeof w === 'number' ? w + 'px' : w}`);
   const maxW = props.maxWidth; if (maxW != null) styles.push(`max-width:${typeof maxW === 'number' ? maxW + 'px' : maxW}`);
@@ -56,7 +96,10 @@ export function hasUniversalProps(props: Record<string, unknown>): boolean {
   const keys = [
     'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-    'backgroundColor', 'borderRadius', 'borderWidth', 'borderColor',
+    'backgroundColor', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius',
+    'borderBottomRightRadius', 'borderBottomLeftRadius', 'borderWidth', 'borderColor',
+    'borderStyle', 'opacity', 'boxShadowOffsetX', 'boxShadowOffsetY',
+    'boxShadowBlur', 'boxShadowSpread', 'boxShadowColor', 'visibleOn',
     'width', 'maxWidth', 'minWidth', 'zIndex',
   ];
   return keys.some((k) => props[k] != null && props[k] !== '');
@@ -80,9 +123,38 @@ export function getUniversalStyleObject(props: Record<string, unknown>): React.C
   const pl = num(props.paddingLeft); if (pl != null) obj.paddingLeft = pl;
 
   const bg = str(props.backgroundColor); if (bg) obj.backgroundColor = bg;
-  const br = num(props.borderRadius); if (br != null) obj.borderRadius = br;
+
+  // 4-corner radius
+  const brTL = num(props.borderTopLeftRadius);
+  const brTR = num(props.borderTopRightRadius);
+  const brBR = num(props.borderBottomRightRadius);
+  const brBL = num(props.borderBottomLeftRadius);
+  const brAll = num(props.borderRadius);
+  if (brTL != null) obj.borderTopLeftRadius = brTL;
+  if (brTR != null) obj.borderTopRightRadius = brTR;
+  if (brBR != null) obj.borderBottomRightRadius = brBR;
+  if (brBL != null) obj.borderBottomLeftRadius = brBL;
+  if (brAll != null && brTL == null && brTR == null && brBR == null && brBL == null) {
+    obj.borderRadius = brAll;
+  }
+
   const bw = num(props.borderWidth); if (bw != null) obj.borderWidth = bw;
-  const bc = str(props.borderColor); if (bc) { obj.borderColor = bc; obj.borderStyle = 'solid'; }
+  const bc = str(props.borderColor); if (bc) obj.borderColor = bc;
+  const bs = str(props.borderStyle); if (bs) obj.borderStyle = bs;
+  if (bc && !bs) obj.borderStyle = 'solid';
+
+  // Opacity
+  const op = num(props.opacity); if (op != null) obj.opacity = op / 100;
+
+  // Box shadow
+  const sx = num(props.boxShadowOffsetX);
+  const sy = num(props.boxShadowOffsetY);
+  const sb = num(props.boxShadowBlur);
+  const ss = num(props.boxShadowSpread);
+  const sc = str(props.boxShadowColor);
+  if (sx != null || sy != null || sb != null || ss != null) {
+    obj.boxShadow = `${sx ?? 0}px ${sy ?? 0}px ${sb ?? 0}px ${ss ?? 0}px ${sc ?? 'rgba(0,0,0,0.2)'}`;
+  }
 
   const zi = num(props.zIndex); if (zi != null) obj.zIndex = zi;
 

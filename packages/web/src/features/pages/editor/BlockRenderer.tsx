@@ -64,6 +64,16 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           {...common}
           content={(props.content as string) ?? ''}
           contentHtml={props.contentHtml as string | undefined}
+          headingLevel={props.headingLevel as string | undefined}
+          fontFamily={props.fontFamily as string | undefined}
+          fontSize={props.fontSize as number | undefined}
+          fontWeight={props.fontWeight as string | undefined}
+          lineHeight={props.lineHeight as number | undefined}
+          letterSpacing={props.letterSpacing as number | undefined}
+          textColor={props.textColor as string | undefined}
+          textAlign={props.textAlign as string | undefined}
+          textTransform={props.textTransform as string | undefined}
+          linkColor={props.linkColor as string | undefined}
         />
       );
     case 'image':
@@ -72,6 +82,10 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           {...common}
           src={(props.src as string) ?? ''}
           alt={(props.alt as string) ?? ''}
+          linkHref={props.linkHref as string | undefined}
+          linkNewTab={(props.linkNewTab as boolean) ?? false}
+          objectFit={(props.objectFit as string) ?? 'contain'}
+          lazyLoad={(props.lazyLoad as boolean) ?? true}
         />
       );
     case 'button':
@@ -80,6 +94,17 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           {...common}
           text={(props.text as string) ?? 'Button'}
           href={(props.href as string) ?? '#'}
+          openNewTab={(props.openNewTab as boolean) ?? false}
+          ariaLabel={props.ariaLabel as string | undefined}
+          fontFamily={props.fontFamily as string | undefined}
+          fontSize={props.fontSize as number | undefined}
+          fontWeight={props.fontWeight as string | undefined}
+          textColor={props.textColor as string | undefined}
+          textAlign={props.textAlign as string | undefined}
+          buttonBgColor={props.buttonBgColor as string | undefined}
+          buttonHoverBgColor={props.buttonHoverBgColor as string | undefined}
+          buttonTextColor={props.buttonTextColor as string | undefined}
+          buttonHoverTextColor={props.buttonHoverTextColor as string | undefined}
         />
       );
     case 'divider':
@@ -87,6 +112,10 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
         <BlockDivider
           {...common}
           orientation={(props.orientation as 'horizontal' | 'vertical') ?? 'horizontal'}
+          lineColor={props.lineColor as string | undefined}
+          lineThickness={(props.lineThickness as number) ?? 1}
+          lineStyle={(props.lineStyle as string) ?? 'solid'}
+          lineWidth={(props.lineWidth as string) ?? '100%'}
         />
       );
     case 'spacer':

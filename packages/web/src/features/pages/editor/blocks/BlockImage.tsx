@@ -5,6 +5,10 @@ interface BlockImageProps {
   id: string;
   src?: string;
   alt?: string;
+  linkHref?: string;
+  linkNewTab?: boolean;
+  objectFit?: string;
+  lazyLoad?: boolean;
   editMode: boolean;
   className?: string;
 }
@@ -13,11 +17,19 @@ export function BlockImage({
   id,
   src = '',
   alt = '',
+  linkHref,
+  linkNewTab,
+  objectFit = 'contain',
+  lazyLoad = true,
   editMode,
   className,
 }: BlockImageProps) {
   const { handleBlockClick, selectedBlockIds } = useEditor();
   const selected = selectedBlockIds.includes(id);
+
+  const imgStyle: React.CSSProperties = {
+    objectFit: objectFit as React.CSSProperties['objectFit'],
+  };
 
   if (editMode) {
     return (
@@ -36,8 +48,8 @@ export function BlockImage({
           <img
             src={src}
             alt={alt}
-            className="max-w-full h-auto object-contain"
-            style={{ maxHeight: 200 }}
+            className="max-w-full h-auto"
+            style={{ ...imgStyle, maxHeight: 200 }}
           />
         ) : (
           <span className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
@@ -49,11 +61,24 @@ export function BlockImage({
   }
 
   if (!src) return null;
-  return (
+
+  const img = (
     <img
       src={src}
       alt={alt}
-      className={cn('max-w-full h-auto object-contain', className)}
+      loading={lazyLoad ? 'lazy' : undefined}
+      className={cn('max-w-full h-auto', className)}
+      style={imgStyle}
     />
   );
+
+  if (linkHref) {
+    return (
+      <a href={linkHref} target={linkNewTab ? '_blank' : undefined} rel={linkNewTab ? 'noopener noreferrer' : undefined}>
+        {img}
+      </a>
+    );
+  }
+
+  return img;
 }

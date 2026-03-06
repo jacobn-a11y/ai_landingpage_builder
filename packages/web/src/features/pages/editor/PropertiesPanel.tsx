@@ -1,5 +1,6 @@
 /**
  * Properties panel: edit selected block props or page scripts.
+ * Includes full typography controls, element-specific panels, and ColorPicker integration.
  */
 
 import { useEditor } from './EditorContext';
@@ -19,6 +20,144 @@ import { PageScriptsPanel } from './PageScriptsPanel';
 import { PageSettingsPanel } from './PageSettingsPanel';
 import { OverlaysPanel } from './OverlaysPanel';
 import { UniversalPropertiesSection } from './UniversalPropertiesSection';
+import { ColorPicker } from '@/components/ui/color-picker';
+
+/* ── Shared constants ── */
+
+const FONT_FAMILIES = [
+  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Raleway',
+  'Nunito', 'Source Sans Pro', 'PT Sans', 'Merriweather', 'Playfair Display',
+  'Oswald', 'Ubuntu', 'Rubik', 'Work Sans', 'DM Sans', 'Barlow', 'Fira Sans',
+  'Libre Franklin', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Verdana',
+];
+
+const FONT_SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96];
+
+const FONT_WEIGHTS = [
+  { value: '300', label: 'Light' },
+  { value: '400', label: 'Regular' },
+  { value: '500', label: 'Medium' },
+  { value: '600', label: 'Semi Bold' },
+  { value: '700', label: 'Bold' },
+  { value: '800', label: 'Extra Bold' },
+  { value: '900', label: 'Black' },
+];
+
+/* ── Typography Section (shared across text / button / heading) ── */
+
+function TypographySection({
+  props,
+  onChange,
+  prefix = '',
+}: {
+  props: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+  prefix?: string;
+}) {
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+  const k = (name: string) => prefix + name;
+
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-medium text-muted-foreground">Typography</div>
+      <div>
+        <Label className="text-[10px] text-muted-foreground">Font family</Label>
+        <Select value={str(props[k('fontFamily')]) ?? ''} onValueChange={(v) => onChange(k('fontFamily'), v || undefined)}>
+          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Default" /></SelectTrigger>
+          <SelectContent>
+            {FONT_FAMILIES.map((f) => (
+              <SelectItem key={f} value={f}>{f}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Size</Label>
+          <Select value={String(num(props[k('fontSize')]) ?? '')} onValueChange={(v) => onChange(k('fontSize'), v ? parseInt(v, 10) : undefined)}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+            <SelectContent>
+              {FONT_SIZES.map((s) => (
+                <SelectItem key={s} value={String(s)}>{s}px</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Weight</Label>
+          <Select value={str(props[k('fontWeight')]) ?? ''} onValueChange={(v) => onChange(k('fontWeight'), v || undefined)}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+            <SelectContent>
+              {FONT_WEIGHTS.map((w) => (
+                <SelectItem key={w.value} value={w.value}>{w.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Line height</Label>
+          <Input
+            type="number"
+            step={0.1}
+            value={num(props[k('lineHeight')]) ?? ''}
+            onChange={(e) => onChange(k('lineHeight'), e.target.value ? parseFloat(e.target.value) : undefined)}
+            className="h-7 text-xs"
+            placeholder="1.5"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Letter spacing</Label>
+          <Input
+            type="number"
+            step={0.1}
+            value={num(props[k('letterSpacing')]) ?? ''}
+            onChange={(e) => onChange(k('letterSpacing'), e.target.value ? parseFloat(e.target.value) : undefined)}
+            className="h-7 text-xs"
+            placeholder="0"
+          />
+        </div>
+      </div>
+      <div>
+        <Label className="text-[10px] text-muted-foreground">Text color</Label>
+        <ColorPicker
+          color={str(props[k('textColor')]) ?? ''}
+          onChange={(c) => onChange(k('textColor'), c || undefined)}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Align</Label>
+          <Select value={str(props[k('textAlign')]) ?? ''} onValueChange={(v) => onChange(k('textAlign'), v || undefined)}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="left">Left</SelectItem>
+              <SelectItem value="center">Center</SelectItem>
+              <SelectItem value="right">Right</SelectItem>
+              <SelectItem value="justify">Justify</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Transform</Label>
+          <Select value={str(props[k('textTransform')]) ?? ''} onValueChange={(v) => onChange(k('textTransform'), v || undefined)}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="uppercase">UPPER</SelectItem>
+              <SelectItem value="lowercase">lower</SelectItem>
+              <SelectItem value="capitalize">Capital</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Panel ── */
 
 export function PropertiesPanel() {
   const { content, selectedBlockIds, selectedBlockId, updateBlock, removeBlock, layoutMode, breakpoint, copyBlocks, pasteBlocks, groupBlocks, alignBlocks, updateBlocksZIndex } = useEditor();
@@ -66,6 +205,9 @@ export function PropertiesPanel() {
     }
   };
 
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+
   return (
     <div className="flex flex-col border-l bg-muted/20 min-w-[220px]">
       <div className="p-2 border-b text-sm font-medium">Properties</div>
@@ -77,22 +219,52 @@ export function PropertiesPanel() {
           </div>
         </div>
 
+        {/* ─── Text block ─── */}
         {block.type === 'text' && (
-          <div className="space-y-2">
-            <Label htmlFor="prop-content" className="text-xs">Content (plain)</Label>
-            <Input
-              id="prop-content"
-              value={(props.content as string) ?? ''}
-              onChange={(e) => handlePropChange('content', e.target.value)}
-              className="text-sm"
-              placeholder="Use toolbar when selected for rich text"
-            />
-            <p className="text-[10px] text-muted-foreground">
-              Use {`{{param}}`} for URL params, e.g. {`{{name}}`}
-            </p>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs">Heading level</Label>
+              <Select
+                value={str(props.headingLevel) ?? 'p'}
+                onValueChange={(v) => handlePropChange('headingLevel', v)}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="p">Paragraph</SelectItem>
+                  <SelectItem value="h1">H1</SelectItem>
+                  <SelectItem value="h2">H2</SelectItem>
+                  <SelectItem value="h3">H3</SelectItem>
+                  <SelectItem value="h4">H4</SelectItem>
+                  <SelectItem value="h5">H5</SelectItem>
+                  <SelectItem value="h6">H6</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prop-content" className="text-xs">Content (plain)</Label>
+              <Input
+                id="prop-content"
+                value={(props.content as string) ?? ''}
+                onChange={(e) => handlePropChange('content', e.target.value)}
+                className="text-sm"
+                placeholder="Use toolbar when selected for rich text"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Use {`{{param}}`} for URL params, e.g. {`{{name}}`}
+              </p>
+            </div>
+            <TypographySection props={props} onChange={(k, v) => handlePropChange(k, v)} />
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Link color</Label>
+              <ColorPicker
+                color={str(props.linkColor) ?? ''}
+                onChange={(c) => handlePropChange('linkColor', c || undefined)}
+              />
+            </div>
           </div>
         )}
 
+        {/* ─── Image block ─── */}
         {block.type === 'image' && (
           <>
             <div className="space-y-2">
@@ -114,9 +286,48 @@ export function PropertiesPanel() {
                 className="text-sm"
               />
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Link URL</Label>
+              <Input
+                value={str(props.linkHref) ?? ''}
+                onChange={(e) => handlePropChange('linkHref', e.target.value || undefined)}
+                placeholder="https://..."
+                className="h-7 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.linkNewTab as boolean) ?? false}
+                onCheckedChange={(v) => handlePropChange('linkNewTab', v)}
+              />
+              <Label className="text-xs">Open in new tab</Label>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Object fit</Label>
+              <Select
+                value={str(props.objectFit) ?? 'cover'}
+                onValueChange={(v) => handlePropChange('objectFit', v)}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cover">Cover</SelectItem>
+                  <SelectItem value="contain">Contain</SelectItem>
+                  <SelectItem value="fill">Fill</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.lazyLoad as boolean) ?? false}
+                onCheckedChange={(v) => handlePropChange('lazyLoad', v)}
+              />
+              <Label className="text-xs">Lazy loading</Label>
+            </div>
           </>
         )}
 
+        {/* ─── Button block ─── */}
         {block.type === 'button' && (
           <>
             <div className="space-y-2">
@@ -137,9 +348,58 @@ export function PropertiesPanel() {
                 className="text-sm"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.openNewTab as boolean) ?? false}
+                onCheckedChange={(v) => handlePropChange('openNewTab', v)}
+              />
+              <Label className="text-xs">Open in new tab</Label>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Aria label</Label>
+              <Input
+                value={str(props.ariaLabel) ?? ''}
+                onChange={(e) => handlePropChange('ariaLabel', e.target.value || undefined)}
+                className="h-7 text-xs"
+                placeholder="Accessible label"
+              />
+            </div>
+            <TypographySection props={props} onChange={(k, v) => handlePropChange(k, v)} />
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">Button colors</div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Background</Label>
+                <ColorPicker
+                  color={str(props.buttonBgColor) ?? ''}
+                  onChange={(c) => handlePropChange('buttonBgColor', c || undefined)}
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Text color</Label>
+                <ColorPicker
+                  color={str(props.buttonTextColor) ?? ''}
+                  onChange={(c) => handlePropChange('buttonTextColor', c || undefined)}
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Hover background</Label>
+                <ColorPicker
+                  color={str(props.buttonHoverBgColor) ?? ''}
+                  onChange={(c) => handlePropChange('buttonHoverBgColor', c || undefined)}
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Hover text color</Label>
+                <ColorPicker
+                  color={str(props.buttonHoverTextColor) ?? ''}
+                  onChange={(c) => handlePropChange('buttonHoverTextColor', c || undefined)}
+                />
+              </div>
+            </div>
           </>
         )}
 
+        {/* ─── Divider block ─── */}
         {block.type === 'divider' && (
           <div className="space-y-2">
             <Label className="text-xs">Orientation</Label>
@@ -155,6 +415,47 @@ export function PropertiesPanel() {
                 <SelectItem value="vertical">Vertical</SelectItem>
               </SelectContent>
             </Select>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Line color</Label>
+              <ColorPicker
+                color={str(props.lineColor) ?? ''}
+                onChange={(c) => handlePropChange('lineColor', c || undefined)}
+              />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Thickness (px)</Label>
+              <Input
+                type="number"
+                value={num(props.lineThickness) ?? ''}
+                onChange={(e) => handlePropChange('lineThickness', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                className="h-7 text-xs"
+                placeholder="1"
+              />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Style</Label>
+              <Select
+                value={str(props.lineStyle) ?? 'solid'}
+                onValueChange={(v) => handlePropChange('lineStyle', v)}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="solid">Solid</SelectItem>
+                  <SelectItem value="dashed">Dashed</SelectItem>
+                  <SelectItem value="dotted">Dotted</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Width</Label>
+              <Input
+                type="text"
+                value={str(props.lineWidth) ?? ''}
+                onChange={(e) => handlePropChange('lineWidth', e.target.value || undefined)}
+                className="h-7 text-xs"
+                placeholder="100% or 200px"
+              />
+            </div>
           </div>
         )}
 
@@ -173,6 +474,7 @@ export function PropertiesPanel() {
           </div>
         )}
 
+        {/* ─── Video block ─── */}
         {block.type === 'video' && (
           <>
             <div className="space-y-2">
@@ -188,6 +490,7 @@ export function PropertiesPanel() {
                   <SelectItem value="youtube">YouTube</SelectItem>
                   <SelectItem value="vimeo">Vimeo</SelectItem>
                   <SelectItem value="wistia">Wistia</SelectItem>
+                  <SelectItem value="loom">Loom</SelectItem>
                   <SelectItem value="custom">Custom URL</SelectItem>
                 </SelectContent>
               </Select>
@@ -200,6 +503,15 @@ export function PropertiesPanel() {
                 onChange={(e) => handlePropChange('url', e.target.value)}
                 placeholder="https://youtube.com/watch?v=..."
                 className="text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Video title</Label>
+              <Input
+                value={str(props.videoTitle) ?? ''}
+                onChange={(e) => handlePropChange('videoTitle', e.target.value || undefined)}
+                className="h-7 text-xs"
+                placeholder="Title for accessibility"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -216,9 +528,24 @@ export function PropertiesPanel() {
               />
               <Label className="text-xs">Mute</Label>
             </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.loop as boolean) ?? false}
+                onCheckedChange={(v) => handlePropChange('loop', v)}
+              />
+              <Label className="text-xs">Loop</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.showControls as boolean) ?? true}
+                onCheckedChange={(v) => handlePropChange('showControls', v)}
+              />
+              <Label className="text-xs">Show controls</Label>
+            </div>
           </>
         )}
 
+        {/* ─── Shape rectangle ─── */}
         {block.type === 'shapeRectangle' && (
           <>
             <div className="space-y-2">
@@ -241,12 +568,16 @@ export function PropertiesPanel() {
             </div>
             <div className="space-y-2">
               <Label className="text-xs">Fill color</Label>
-              <Input
-                type="text"
-                value={(props.fillColor as string) ?? '#e5e7eb'}
-                onChange={(e) => handlePropChange('fillColor', e.target.value)}
-                placeholder="#e5e7eb"
-                className="text-sm"
+              <ColorPicker
+                color={str(props.fillColor) ?? '#e5e7eb'}
+                onChange={(c) => handlePropChange('fillColor', c)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Border color</Label>
+              <ColorPicker
+                color={str(props.borderColor) ?? ''}
+                onChange={(c) => handlePropChange('borderColor', c || undefined)}
               />
             </div>
             <div className="space-y-2">
@@ -258,9 +589,24 @@ export function PropertiesPanel() {
                 className="text-sm"
               />
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Opacity</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={num(props.shapeOpacity) ?? 100}
+                  onChange={(e) => handlePropChange('shapeOpacity', parseInt(e.target.value, 10))}
+                  className="flex-1"
+                />
+                <span className="text-xs w-8 text-right">{num(props.shapeOpacity) ?? 100}%</span>
+              </div>
+            </div>
           </>
         )}
 
+        {/* ─── Shape circle ─── */}
         {block.type === 'shapeCircle' && (
           <>
             <div className="space-y-2">
@@ -274,17 +620,36 @@ export function PropertiesPanel() {
             </div>
             <div className="space-y-2">
               <Label className="text-xs">Fill color</Label>
-              <Input
-                type="text"
-                value={(props.fillColor as string) ?? '#e5e7eb'}
-                onChange={(e) => handlePropChange('fillColor', e.target.value)}
-                placeholder="#e5e7eb"
-                className="text-sm"
+              <ColorPicker
+                color={str(props.fillColor) ?? '#e5e7eb'}
+                onChange={(c) => handlePropChange('fillColor', c)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Border color</Label>
+              <ColorPicker
+                color={str(props.borderColor) ?? ''}
+                onChange={(c) => handlePropChange('borderColor', c || undefined)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Opacity</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={num(props.shapeOpacity) ?? 100}
+                  onChange={(e) => handlePropChange('shapeOpacity', parseInt(e.target.value, 10))}
+                  className="flex-1"
+                />
+                <span className="text-xs w-8 text-right">{num(props.shapeOpacity) ?? 100}%</span>
+              </div>
             </div>
           </>
         )}
 
+        {/* ─── Countdown block ─── */}
         {block.type === 'countdown' && (
           <>
             <div className="space-y-2">
@@ -296,21 +661,61 @@ export function PropertiesPanel() {
                 className="text-sm"
               />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Days label</Label>
-              <Input
-                value={(props.daysLabel as string) ?? 'Days'}
-                onChange={(e) => handlePropChange('daysLabel', e.target.value)}
-                className="text-sm"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Days label</Label>
+                <Input value={str(props.daysLabel) ?? 'Days'} onChange={(e) => handlePropChange('daysLabel', e.target.value)} className="h-7 text-xs" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Hours label</Label>
+                <Input value={str(props.hoursLabel) ?? 'Hours'} onChange={(e) => handlePropChange('hoursLabel', e.target.value)} className="h-7 text-xs" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Minutes label</Label>
+                <Input value={str(props.minutesLabel) ?? 'Minutes'} onChange={(e) => handlePropChange('minutesLabel', e.target.value)} className="h-7 text-xs" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Seconds label</Label>
+                <Input value={str(props.secondsLabel) ?? 'Seconds'} onChange={(e) => handlePropChange('secondsLabel', e.target.value)} className="h-7 text-xs" />
+              </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-xs">Hours label</Label>
-              <Input
-                value={(props.hoursLabel as string) ?? 'Hours'}
-                onChange={(e) => handlePropChange('hoursLabel', e.target.value)}
-                className="text-sm"
-              />
+              <div className="text-xs font-medium text-muted-foreground">Colors</div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Number color</Label>
+                <ColorPicker
+                  color={str(props.numberColor) ?? ''}
+                  onChange={(c) => handlePropChange('numberColor', c || undefined)}
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Label color</Label>
+                <ColorPicker
+                  color={str(props.labelColor) ?? ''}
+                  onChange={(c) => handlePropChange('labelColor', c || undefined)}
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Timer background</Label>
+                <ColorPicker
+                  color={str(props.timerBgColor) ?? ''}
+                  onChange={(c) => handlePropChange('timerBgColor', c || undefined)}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Label position</Label>
+              <Select
+                value={str(props.labelPosition) ?? 'bottom'}
+                onValueChange={(v) => handlePropChange('labelPosition', v)}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bottom">Bottom</SelectItem>
+                  <SelectItem value="top">Top</SelectItem>
+                  <SelectItem value="inside">Inside</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </>
         )}
@@ -361,7 +766,7 @@ export function PropertiesPanel() {
               value={(props.html as string) ?? ''}
               onChange={(e) => handlePropChange('html', e.target.value)}
               className="w-full min-h-[80px] p-2 text-sm font-mono border rounded bg-background"
-              placeholder="<div>...</div>"
+              placeholder="<div>...</div> — Avoid inline scripts for security"
             />
           </div>
         )}
