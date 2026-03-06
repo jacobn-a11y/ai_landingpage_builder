@@ -190,6 +190,7 @@ export function PageEditFeature() {
   const [page, setPage] = useState<Page | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -228,8 +229,6 @@ export function PageEditFeature() {
       </div>
     );
   }
-
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const handlePublishChange = async () => {
     if (!id) return;
