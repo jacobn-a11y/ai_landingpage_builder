@@ -51,6 +51,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    accept: (token: string) =>
+      fetchApi<{ redirectUrl: string }>('/invites/accept', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
   },
   users: {
     remove: (id: string) =>

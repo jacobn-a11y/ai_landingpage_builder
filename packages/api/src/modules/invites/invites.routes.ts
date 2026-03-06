@@ -56,28 +56,28 @@ invitesRouter.post(
   }
 );
 
-invitesRouter.get('/accept', async (req: Request, res: Response) => {
-  const token = req.query.token as string | undefined;
+invitesRouter.post('/accept', async (req: Request, res: Response) => {
+  const token = req.body?.token as string | undefined;
   if (!token) {
-    const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
-    return res.redirect(`${webUrl}/login?error=Missing invite token`);
+    res.status(400).json({ error: 'Missing invite token' });
+    return;
   }
   const invite = await prisma.invite.findFirst({
     where: { token },
     include: { workspace: true },
   });
   if (!invite) {
-    const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
-    return res.redirect(`${webUrl}/login?error=Invalid invite`);
+    res.status(400).json({ error: 'Invalid invite' });
+    return;
   }
   if (invite.expiresAt < new Date()) {
-    const webUrl = process.env.WEB_URL ?? 'http://localhost:5173';
-    return res.redirect(`${webUrl}/login?error=Invite expired`);
+    res.status(400).json({ error: 'Invite expired' });
+    return;
   }
   req.session.inviteToken = token;
   req.session.inviteWorkspaceId = invite.workspaceId;
   req.session.inviteRole = invite.role;
   req.session.inviteEmail = invite.email;
-  // Redirect to auth endpoint on the same host (works with both proxy and direct API access)
-  res.redirect('/api/v1/auth/google');
+  const redirectUrl = `${process.env.API_URL ?? 'http://localhost:3001'}/api/v1/auth/google`;
+  res.status(200).json({ redirectUrl });
 });
