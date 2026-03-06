@@ -29,6 +29,7 @@ model Workspace {
   submissions Submission[]
   integrations Integration[]
   blockLibraryFolders BlockLibraryFolder[]
+  importJobs ImportJob[]
 
   @@index([id])
 }
@@ -116,6 +117,7 @@ model Page {
   folder    Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
   formBindings PageFormBinding[]
   submissions Submission[]
+  stylesheets PageStylesheet[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -206,4 +208,77 @@ model BlockLibraryItem {
   folder BlockLibraryFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
 
   @@index([folderId])
+}
+
+// MHTML Import Pipeline Models
+
+model ImportJob {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  userId          String
+  status          String    @default("queued") // queued | unpacking | rendering | analyzing | building | validating | creating_page | fidelity_check | complete | failed
+  stage           String?   // Current processing stage detail
+  inputHash       String    // SHA-256 of raw upload bytes
+  idempotencyKey  String    @unique // {workspaceId}:{inputHash}
+  resultPageId    String?   // Set on successful completion
+  errorCode       String?   // Structured error code (e.g. IMPORT_MHTML_MALFORMED)
+  errorMessage    String?   // Human-readable error
+  statsJson       Json?     // { tiers, sections, assets, warnings }
+  timingsJson     Json?     // { unpack, render, analyze, build, validate } in ms
+  uploadSizeBytes Int
+  sourceRetained  Boolean   @default(false)
+  sourceExpiresAt DateTime?
+  schemaVersion   Int       @default(1)
+  heartbeatAt     DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([idempotencyKey])
+}
+
+model PageStylesheet {
+  id           String   @id @default(cuid())
+  pageId       String
+  fragmentId   String   @unique // Unique identifier for this CSS fragment
+  scopeId      String   // Matches data-import-scope attribute on block wrapper
+  ownerBlockId String   // Block that owns this stylesheet fragment
+  cssText      String   // Scoped CSS text (selectors already prefixed)
+  version      Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+  @@index([ownerBlockId])
+}
+
+model AssetUsage {
+  id          String   @id @default(cuid())
+  assetId     String   // SHA-256 hash of asset content
+  workspaceId String
+  pageId      String?
+  blockId     String?
+  jobId       String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, assetId])
+  @@index([pageId])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorId     String
+  eventType   String   // import.requested | import.started | import.failed | import.complete | etc.
+  jobId       String?
+  pageId      String?
+  metadata    Json?    // Additional context
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([jobId])
 }

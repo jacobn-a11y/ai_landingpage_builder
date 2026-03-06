@@ -19,6 +19,26 @@ async function fetchApi<T>(
   return res.json();
 }
 
+/**
+ * Fetch API with FormData (no Content-Type header; browser sets multipart boundary).
+ */
+async function fetchApiFormData<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+    // Do NOT set Content-Type — browser will set multipart boundary
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error ?? 'Request failed');
+  }
+  return res.json();
+}
+
 export const api = {
   auth: {
     me: () => fetchApi<{ user: AuthUser | null }>('/auth/me'),
@@ -191,6 +211,20 @@ export const api = {
       fetchApi<{ ok: boolean }>(`/library/folders/${id}`, { method: 'DELETE' }),
     deleteItem: (id: string) =>
       fetchApi<{ ok: boolean }>(`/library/items/${id}`, { method: 'DELETE' }),
+  },
+  import: {
+    mhtml: (file: File, opts: { name?: string; slug?: string; folderId?: string; retainSource?: boolean; force?: boolean }) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (opts.name) form.append('name', opts.name);
+      if (opts.slug) form.append('slug', opts.slug);
+      if (opts.folderId) form.append('folderId', opts.folderId);
+      if (opts.retainSource) form.append('retainSource', 'true');
+      if (opts.force) form.append('force', 'true');
+      return fetchApiFormData<ImportJobResponse>('/import/mhtml', form);
+    },
+    status: (jobId: string) => fetchApi<ImportJobStatus>(`/import/jobs/${jobId}`),
+    cancel: (jobId: string) => fetchApi<{ jobId: string; status: string }>(`/import/jobs/${jobId}`, { method: 'DELETE' }),
   },
   folders: {
     list: () => fetchApi<{ folders: FolderNode[] }>('/folders'),
@@ -393,4 +427,32 @@ export type BlockLibraryFolder = {
   name: string;
   createdAt: string;
   items: BlockLibraryItem[];
+};
+
+export type ImportJobResponse = {
+  jobId: string;
+  status: string;
+};
+
+export type ImportJobStatus = {
+  jobId: string;
+  status: string;
+  stage?: string;
+  resultPageId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  stats?: {
+    sectionsDetected: number;
+    blocksCreated: number;
+    tierA: number;
+    tierB: number;
+    tierC: number;
+    tierD: number;
+    assetsExtracted: number;
+    warnings: string[];
+  };
+  sourceRetained: boolean;
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt: string;
 };

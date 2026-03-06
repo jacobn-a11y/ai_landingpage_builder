@@ -179,7 +179,23 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       break;
     case 'customHtml': {
       const raw = replaceDynamicText(String(props.html ?? ''), ctx?.urlParams);
-      result = sanitizeCustomHtml(raw);
+      const importMeta = props._importMeta as { tier?: string; scopeId?: string } | undefined;
+      if (importMeta?.tier === 'A' || importMeta?.tier === 'B') {
+        // Tier A/B: render inside import-safe wrapper with scoped CSS
+        const scopeId = importMeta.scopeId ?? '';
+        const safeHtml = sanitizeCustomHtml(raw);
+        result = `<div data-import-scope="${escapeHtml(scopeId)}" class="import-safe-wrapper">${safeHtml}</div>`;
+      } else if (importMeta?.tier === 'C') {
+        // Tier C: render with full HTML payload wrapper (no freeform editing in published)
+        const safeHtml = sanitizeCustomHtml(raw);
+        result = `<div data-import-scope="${escapeHtml(importMeta.scopeId ?? '')}" class="import-safe-wrapper import-tier-c">${safeHtml}</div>`;
+      } else if (importMeta?.tier === 'D') {
+        // Tier D: locked render, already sanitized
+        result = sanitizeCustomHtml(raw);
+      } else {
+        // Non-imported customHtml
+        result = sanitizeCustomHtml(raw);
+      }
       break;
     }
     case 'video': {
@@ -432,6 +448,13 @@ export interface PopupData {
   delaySeconds?: number;
 }
 
+export interface ScopedStyleData {
+  fragmentId: string;
+  scopeId: string;
+  ownerBlockId: string;
+  cssText: string;
+}
+
 export interface RenderPageOptions {
   contentHtml: string;
   pageId: string;
@@ -445,6 +468,7 @@ export interface RenderPageOptions {
   pageSettings?: PageSettings | null;
   stickyBars?: StickyBarData[];
   popups?: PopupData[];
+  scopedStyles?: ScopedStyleData[];
 }
 
 function renderOverlayContent(blocks: Record<string, BaseBlock>, rootId: string): string {
@@ -543,6 +567,12 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   if (pageSettings?.fontFamily) bodyStyle.push(`font-family:${sanitizeCssValue(pageSettings.fontFamily)}`);
   const bodyStyleAttr = bodyStyle.length ? ` style="${escapeHtml(bodyStyle.join(';'))}"` : '';
 
+  // Build scoped CSS block for imported content
+  const scopedStyleTags = (opts.scopedStyles ?? [])
+    .sort((a, b) => a.fragmentId.localeCompare(b.fragmentId)) // deterministic ordering
+    .map((s) => `<style data-import-fragment="${escapeHtml(s.fragmentId)}">${s.cssText}</style>`)
+    .join('\n  ');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -552,6 +582,7 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   ${metaDesc ? `<meta name="description" content="${escapeHtml(metaDesc)}" />` : ''}
   <meta property="og:title" content="${escapeHtml(ogTitle)}" />
   ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : ''}
+  ${scopedStyleTags}
   <script>
     window.__REPLICA_PAGE__ = { pageId: "${escapeHtml(pageId)}", pageName: "${escapeHtml(pageName ?? '')}", pageSlug: "${escapeHtml(pageSlug)}", formActionUrl: "${escapeHtml(formActionUrl)}" };
   </script>
