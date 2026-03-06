@@ -108,3 +108,11 @@ app.use('/api/v1/submissions', submissionsRouter);
 app.use('/api/v1/serve', serveRouter);
 app.use('/api/v1/integrations', integrationsRouter);
 app.use('/api/v1/library', libraryRouter);
+
+// Global error handler — catch unhandled async errors
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[app] Unhandled error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
