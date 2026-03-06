@@ -40,3 +40,6 @@ packages/api/prisma/migrations/**/migration_lock.toml
 # Testing
 coverage/
 .nyc_output/
+
+# Runtime data (assets, temp files)
+packages/api/data/
