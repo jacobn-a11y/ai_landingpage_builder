@@ -7,6 +7,8 @@ import { useEditor } from './EditorContext';
 import { getUniversalStyleObject, hasUniversalProps } from './universal-props';
 import {
   BlockText,
+  BlockHeadline,
+  BlockParagraph,
   BlockImage,
   BlockButton,
   BlockDivider,
@@ -18,6 +20,8 @@ import {
   BlockTable,
   BlockForm,
   BlockCustomHtml,
+  BlockAccordion,
+  BlockCarousel,
   BlockSection,
   BlockContainer,
   BlockGrid,
@@ -67,6 +71,41 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           headingLevel={props.headingLevel as string | undefined}
           fontFamily={props.fontFamily as string | undefined}
           fontSize={props.fontSize as number | undefined}
+          fontWeight={props.fontWeight as string | undefined}
+          lineHeight={props.lineHeight as number | undefined}
+          letterSpacing={props.letterSpacing as number | undefined}
+          textColor={props.textColor as string | undefined}
+          textAlign={props.textAlign as string | undefined}
+          textTransform={props.textTransform as string | undefined}
+          linkColor={props.linkColor as string | undefined}
+        />
+      );
+    case 'headline':
+      return (
+        <BlockHeadline
+          {...common}
+          content={(props.content as string) ?? ''}
+          contentHtml={props.contentHtml as string | undefined}
+          headingLevel={(props.headingLevel as string) ?? 'h2'}
+          fontFamily={props.fontFamily as string | undefined}
+          fontSize={props.fontSize as number | undefined}
+          fontWeight={(props.fontWeight as string) ?? '700'}
+          lineHeight={props.lineHeight as number | undefined}
+          letterSpacing={props.letterSpacing as number | undefined}
+          textColor={props.textColor as string | undefined}
+          textAlign={props.textAlign as string | undefined}
+          textTransform={props.textTransform as string | undefined}
+          linkColor={props.linkColor as string | undefined}
+        />
+      );
+    case 'paragraph':
+      return (
+        <BlockParagraph
+          {...common}
+          content={(props.content as string) ?? ''}
+          contentHtml={props.contentHtml as string | undefined}
+          fontFamily={props.fontFamily as string | undefined}
+          fontSize={(props.fontSize as number) ?? 16}
           fontWeight={props.fontWeight as string | undefined}
           lineHeight={props.lineHeight as number | undefined}
           letterSpacing={props.letterSpacing as number | undefined}
@@ -186,6 +225,10 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           {...common}
           formId={(props.formId as string) ?? ''}
           formBindings={page?.formBindings ?? []}
+          fields={props.fields as Record<string, unknown>[] | undefined}
+          submitText={(props.submitText as string) ?? 'Submit'}
+          successMessage={props.successMessage as string | undefined}
+          redirectUrl={props.redirectUrl as string | undefined}
         />
       );
     case 'customHtml':
@@ -193,6 +236,38 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
         <BlockCustomHtml
           {...common}
           html={(props.html as string) ?? ''}
+        />
+      );
+    case 'accordion':
+      return (
+        <BlockAccordion
+          {...common}
+          sections={props.sections as any[] | undefined}
+          expandOneOnly={(props.expandOneOnly as boolean) ?? false}
+          arrowColor={props.arrowColor as string | undefined}
+          dividerColor={(props.dividerColor as string) ?? '#e5e7eb'}
+          sectionSpacing={(props.sectionSpacing as number) ?? 0}
+          titleFontFamily={props.titleFontFamily as string | undefined}
+          titleFontSize={(props.titleFontSize as number) ?? 16}
+          titleFontWeight={(props.titleFontWeight as string) ?? '600'}
+          titleColor={props.titleColor as string | undefined}
+          contentColor={props.contentColor as string | undefined}
+        />
+      );
+    case 'carousel':
+      return (
+        <BlockCarousel
+          {...common}
+          slides={props.slides as any[] | undefined}
+          autoPlay={(props.autoPlay as boolean) ?? false}
+          autoPlayInterval={(props.autoPlayInterval as number) ?? 3000}
+          showArrows={(props.showArrows as boolean) ?? true}
+          arrowsColor={(props.arrowsColor as string) ?? '#333'}
+          showDots={(props.showDots as boolean) ?? true}
+          dotSelectedColor={(props.dotSelectedColor as string) ?? '#333'}
+          dotUnselectedColor={(props.dotUnselectedColor as string) ?? '#ccc'}
+          backgroundColor={props.backgroundColor as string | undefined}
+          loop={(props.loop as boolean) ?? true}
         />
       );
     case 'section':

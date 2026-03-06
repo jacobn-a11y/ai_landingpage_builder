@@ -21,15 +21,12 @@ import { PageSettingsPanel } from './PageSettingsPanel';
 import { OverlaysPanel } from './OverlaysPanel';
 import { UniversalPropertiesSection } from './UniversalPropertiesSection';
 import { ColorPicker } from '@/components/ui/color-picker';
+import { loadGoogleFont, POPULAR_GOOGLE_FONTS } from './google-fonts';
 
 /* ── Shared constants ── */
 
-const FONT_FAMILIES = [
-  'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Raleway',
-  'Nunito', 'Source Sans Pro', 'PT Sans', 'Merriweather', 'Playfair Display',
-  'Oswald', 'Ubuntu', 'Rubik', 'Work Sans', 'DM Sans', 'Barlow', 'Fira Sans',
-  'Libre Franklin', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Verdana',
-];
+const SYSTEM_FONTS = ['Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Verdana', 'Courier New'];
+const FONT_FAMILIES = [...POPULAR_GOOGLE_FONTS, ...SYSTEM_FONTS];
 
 const FONT_SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96];
 
@@ -63,7 +60,7 @@ function TypographySection({
       <div className="text-xs font-medium text-muted-foreground">Typography</div>
       <div>
         <Label className="text-[10px] text-muted-foreground">Font family</Label>
-        <Select value={str(props[k('fontFamily')]) ?? ''} onValueChange={(v) => onChange(k('fontFamily'), v || undefined)}>
+        <Select value={str(props[k('fontFamily')]) ?? ''} onValueChange={(v) => { if (v) loadGoogleFont(v); onChange(k('fontFamily'), v || undefined); }}>
           <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Default" /></SelectTrigger>
           <SelectContent>
             {FONT_FAMILIES.map((f) => (
@@ -219,7 +216,73 @@ export function PropertiesPanel() {
           </div>
         </div>
 
-        {/* ─── Text block ─── */}
+        {/* ─── Headline block ─── */}
+        {block.type === 'headline' && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs">Heading level</Label>
+              <Select
+                value={str(props.headingLevel) ?? 'h2'}
+                onValueChange={(v) => handlePropChange('headingLevel', v)}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="h1">H1</SelectItem>
+                  <SelectItem value="h2">H2</SelectItem>
+                  <SelectItem value="h3">H3</SelectItem>
+                  <SelectItem value="h4">H4</SelectItem>
+                  <SelectItem value="h5">H5</SelectItem>
+                  <SelectItem value="h6">H6</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Content (plain)</Label>
+              <Input
+                value={(props.content as string) ?? ''}
+                onChange={(e) => handlePropChange('content', e.target.value)}
+                className="text-sm"
+                placeholder="Double-click on canvas to edit inline"
+              />
+            </div>
+            <TypographySection props={props} onChange={(k, v) => handlePropChange(k, v)} />
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Link color</Label>
+              <ColorPicker
+                color={str(props.linkColor) ?? ''}
+                onChange={(c) => handlePropChange('linkColor', c || undefined)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ─── Paragraph block ─── */}
+        {block.type === 'paragraph' && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs">Content (plain)</Label>
+              <Input
+                value={(props.content as string) ?? ''}
+                onChange={(e) => handlePropChange('content', e.target.value)}
+                className="text-sm"
+                placeholder="Double-click on canvas to edit inline"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Use {`{{param}}`} for URL params, e.g. {`{{name}}`}
+              </p>
+            </div>
+            <TypographySection props={props} onChange={(k, v) => handlePropChange(k, v)} />
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Link color</Label>
+              <ColorPicker
+                color={str(props.linkColor) ?? ''}
+                onChange={(c) => handlePropChange('linkColor', c || undefined)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ─── Text block (legacy) ─── */}
         {block.type === 'text' && (
           <div className="space-y-3">
             <div className="space-y-2">
@@ -745,16 +808,246 @@ export function PropertiesPanel() {
           </div>
         )}
 
+        {/* ─── Form block ─── */}
         {block.type === 'form' && (
-          <div className="space-y-2">
-            <Label htmlFor="prop-formId" className="text-xs">Form ID</Label>
-            <Input
-              id="prop-formId"
-              value={(props.formId as string) ?? ''}
-              onChange={(e) => handlePropChange('formId', e.target.value)}
-              placeholder="form-id"
-              className="text-sm"
-            />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs">Form ID (optional)</Label>
+              <Input
+                value={(props.formId as string) ?? ''}
+                onChange={(e) => handlePropChange('formId', e.target.value)}
+                placeholder="form-id"
+                className="h-7 text-xs"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Submit button text</Label>
+              <Input
+                value={str(props.submitText) ?? 'Submit'}
+                onChange={(e) => handlePropChange('submitText', e.target.value)}
+                className="h-7 text-xs"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">After submit</Label>
+              <Select
+                value={str(props.successAction) ?? 'message'}
+                onValueChange={(v) => handlePropChange('successAction', v)}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="message">Show message</SelectItem>
+                  <SelectItem value="redirect">Redirect to URL</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(str(props.successAction) ?? 'message') === 'message' && (
+              <div className="space-y-2">
+                <Label className="text-xs">Success message</Label>
+                <Input
+                  value={str(props.successMessage) ?? 'Thank you!'}
+                  onChange={(e) => handlePropChange('successMessage', e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+            )}
+            {str(props.successAction) === 'redirect' && (
+              <div className="space-y-2">
+                <Label className="text-xs">Redirect URL</Label>
+                <Input
+                  value={str(props.redirectUrl) ?? ''}
+                  onChange={(e) => handlePropChange('redirectUrl', e.target.value)}
+                  placeholder="https://..."
+                  className="h-7 text-xs"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">Fields</div>
+              <p className="text-[10px] text-muted-foreground">
+                Edit fields as JSON array. Each field: id, type (text/email/phone/textarea/dropdown/checkbox/radio/hidden), label, placeholder, required, options.
+              </p>
+              <textarea
+                value={JSON.stringify(
+                  (props.fields as unknown[]) ?? [
+                    { id: 'name', type: 'text', label: 'Name', placeholder: 'Your name', required: true },
+                    { id: 'email', type: 'email', label: 'Email', placeholder: 'you@example.com', required: true },
+                  ],
+                  null, 2
+                )}
+                onChange={(e) => {
+                  try {
+                    const parsed = JSON.parse(e.target.value || '[]');
+                    if (Array.isArray(parsed)) handlePropChange('fields', parsed);
+                  } catch { /* invalid json */ }
+                }}
+                className="w-full min-h-[120px] p-2 text-xs font-mono border rounded bg-background"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ─── Accordion block ─── */}
+        {block.type === 'accordion' && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.expandOneOnly as boolean) ?? false}
+                onCheckedChange={(v) => handlePropChange('expandOneOnly', v)}
+              />
+              <Label className="text-xs">Expand one at a time</Label>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">Title styling</div>
+              <TypographySection props={props} onChange={(k, v) => handlePropChange(k, v)} prefix="title" />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Arrow color</Label>
+              <ColorPicker
+                color={str(props.arrowColor) ?? ''}
+                onChange={(c) => handlePropChange('arrowColor', c || undefined)}
+              />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Divider color</Label>
+              <ColorPicker
+                color={str(props.dividerColor) ?? '#e5e7eb'}
+                onChange={(c) => handlePropChange('dividerColor', c)}
+              />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Content text color</Label>
+              <ColorPicker
+                color={str(props.contentColor) ?? ''}
+                onChange={(c) => handlePropChange('contentColor', c || undefined)}
+              />
+            </div>
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Section spacing (px)</Label>
+              <Input
+                type="number"
+                value={num(props.sectionSpacing) ?? 0}
+                onChange={(e) => handlePropChange('sectionSpacing', parseInt(e.target.value, 10) || 0)}
+                className="h-7 text-xs"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">Sections</div>
+              <p className="text-[10px] text-muted-foreground">
+                Edit sections as JSON. Each: id, title, content, defaultExpanded.
+              </p>
+              <textarea
+                value={JSON.stringify(
+                  (props.sections as unknown[]) ?? [
+                    { id: '1', title: 'Section 1', content: 'Content 1', defaultExpanded: true },
+                    { id: '2', title: 'Section 2', content: 'Content 2' },
+                    { id: '3', title: 'Section 3', content: 'Content 3' },
+                  ],
+                  null, 2
+                )}
+                onChange={(e) => {
+                  try {
+                    const parsed = JSON.parse(e.target.value || '[]');
+                    if (Array.isArray(parsed)) handlePropChange('sections', parsed);
+                  } catch { /* invalid json */ }
+                }}
+                className="w-full min-h-[120px] p-2 text-xs font-mono border rounded bg-background"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ─── Carousel block ─── */}
+        {block.type === 'carousel' && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.autoPlay as boolean) ?? false}
+                onCheckedChange={(v) => handlePropChange('autoPlay', v)}
+              />
+              <Label className="text-xs">Auto play</Label>
+            </div>
+            {(props.autoPlay as boolean) && (
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Interval (ms)</Label>
+                <Input
+                  type="number"
+                  value={num(props.autoPlayInterval) ?? 3000}
+                  onChange={(e) => handlePropChange('autoPlayInterval', parseInt(e.target.value, 10) || 3000)}
+                  className="h-7 text-xs"
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.showArrows as boolean) ?? true}
+                onCheckedChange={(v) => handlePropChange('showArrows', v)}
+              />
+              <Label className="text-xs">Show arrows</Label>
+            </div>
+            {(props.showArrows as boolean) !== false && (
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Arrow color</Label>
+                <ColorPicker
+                  color={str(props.arrowsColor) ?? '#333'}
+                  onChange={(c) => handlePropChange('arrowsColor', c)}
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.showDots as boolean) ?? true}
+                onCheckedChange={(v) => handlePropChange('showDots', v)}
+              />
+              <Label className="text-xs">Show dots</Label>
+            </div>
+            {(props.showDots as boolean) !== false && (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Dot selected color</Label>
+                  <ColorPicker
+                    color={str(props.dotSelectedColor) ?? '#333'}
+                    onChange={(c) => handlePropChange('dotSelectedColor', c)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Dot unselected color</Label>
+                  <ColorPicker
+                    color={str(props.dotUnselectedColor) ?? '#ccc'}
+                    onChange={(c) => handlePropChange('dotUnselectedColor', c)}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={(props.loop as boolean) ?? true}
+                onCheckedChange={(v) => handlePropChange('loop', v)}
+              />
+              <Label className="text-xs">Loop</Label>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">Slides</div>
+              <p className="text-[10px] text-muted-foreground">
+                Edit slides as JSON. Each: id, name, contentHtml, imageUrl.
+              </p>
+              <textarea
+                value={JSON.stringify(
+                  (props.slides as unknown[]) ?? [
+                    { id: '1', name: 'Slide 1', contentHtml: '<p>Slide 1</p>' },
+                    { id: '2', name: 'Slide 2', contentHtml: '<p>Slide 2</p>' },
+                  ],
+                  null, 2
+                )}
+                onChange={(e) => {
+                  try {
+                    const parsed = JSON.parse(e.target.value || '[]');
+                    if (Array.isArray(parsed)) handlePropChange('slides', parsed);
+                  } catch { /* invalid json */ }
+                }}
+                className="w-full min-h-[120px] p-2 text-xs font-mono border rounded bg-background"
+              />
+            </div>
           </div>
         )}
 

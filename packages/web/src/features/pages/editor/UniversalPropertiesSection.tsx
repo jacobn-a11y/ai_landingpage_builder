@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ColorPicker } from '@/components/ui/color-picker';
-import { Link2, Unlink2 } from 'lucide-react';
+import { Link2, Unlink } from 'lucide-react';
 
 interface UniversalPropertiesSectionProps {
   props: Record<string, unknown>;
@@ -167,7 +167,7 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
             onClick={() => setPaddingLinked(!paddingLinked)}
             title={paddingLinked ? 'Unlink sides' : 'Link all sides'}
           >
-            {paddingLinked ? <Link2 className="h-3 w-3" /> : <Unlink2 className="h-3 w-3" />}
+            {paddingLinked ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
           </Button>
         </div>
         {paddingLinked ? (
@@ -264,7 +264,7 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
             onClick={() => setRadiusLinked(!radiusLinked)}
             title={radiusLinked ? 'Unlink corners' : 'Link all corners'}
           >
-            {radiusLinked ? <Link2 className="h-3 w-3" /> : <Unlink2 className="h-3 w-3" />}
+            {radiusLinked ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
           </Button>
         </div>
         {radiusLinked ? (

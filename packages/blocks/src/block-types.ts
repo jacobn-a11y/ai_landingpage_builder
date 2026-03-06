@@ -14,6 +14,8 @@ export type LayoutBlockType =
 
 export type ContentBlockType =
   | 'text'
+  | 'headline'
+  | 'paragraph'
   | 'image'
   | 'button'
   | 'divider'
@@ -22,7 +24,9 @@ export type ContentBlockType =
   | 'shapeRectangle'
   | 'shapeCircle'
   | 'countdown'
-  | 'table';
+  | 'table'
+  | 'accordion'
+  | 'carousel';
 
 export type PatternBlockType =
   | 'hero'

@@ -1,4 +1,6 @@
 export { BlockText } from './BlockText';
+export { BlockHeadline } from './BlockHeadline';
+export { BlockParagraph } from './BlockParagraph';
 export { BlockImage } from './BlockImage';
 export { BlockButton } from './BlockButton';
 export { BlockDivider } from './BlockDivider';
@@ -10,6 +12,8 @@ export { BlockCountdown } from './BlockCountdown';
 export { BlockTable } from './BlockTable';
 export { BlockForm } from './BlockForm';
 export { BlockCustomHtml } from './BlockCustomHtml';
+export { BlockAccordion } from './BlockAccordion';
+export { BlockCarousel } from './BlockCarousel';
 export { BlockSection } from './BlockSection';
 export { BlockContainer } from './BlockContainer';
 export { BlockGrid } from './BlockGrid';
