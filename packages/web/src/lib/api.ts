@@ -37,6 +37,7 @@ export const api = {
         globalHeaderScript: string | null;
         globalFooterScript: string | null;
         scriptAllowlist: ScriptAllowlistEntry[];
+        notFoundRedirectUrl: string | null;
       }>
     ) =>
       fetchApi<{ workspace: Workspace }>(`/workspaces/${id}/settings`, {
@@ -228,6 +229,7 @@ export type Workspace = {
   globalHeaderScript?: string | null;
   globalFooterScript?: string | null;
   scriptAllowlist?: ScriptAllowlistEntry[];
+  notFoundRedirectUrl?: string | null;
 };
 
 export type WorkspaceUser = {

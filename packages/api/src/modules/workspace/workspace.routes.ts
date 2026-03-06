@@ -20,6 +20,7 @@ workspaceRouter.get('/', requireAuth, async (req: Request, res: Response) => {
       globalHeaderScript: true,
       globalFooterScript: true,
       scriptAllowlist: true,
+      notFoundRedirectUrl: true,
     },
   });
   if (!workspace) {
@@ -77,6 +78,7 @@ workspaceRouter.patch(
       globalHeaderScript,
       globalFooterScript,
       scriptAllowlist,
+      notFoundRedirectUrl,
     } = req.body;
 
     const updates: Record<string, unknown> = {};
@@ -124,6 +126,24 @@ workspaceRouter.patch(
       }
       updates.scriptAllowlist = valid;
     }
+    if (notFoundRedirectUrl !== undefined) {
+      if (notFoundRedirectUrl === null || notFoundRedirectUrl === '') {
+        updates.notFoundRedirectUrl = null;
+      } else if (typeof notFoundRedirectUrl === 'string') {
+        const trimmed = notFoundRedirectUrl.trim();
+        try {
+          const parsed = new URL(trimmed);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            res.status(400).json({ error: 'notFoundRedirectUrl must use http or https' });
+            return;
+          }
+          updates.notFoundRedirectUrl = trimmed;
+        } catch {
+          res.status(400).json({ error: 'notFoundRedirectUrl must be a valid URL' });
+          return;
+        }
+      }
+    }
 
     const workspace = await prisma.workspace.update({
       where: { id: workspaceId },
@@ -138,6 +158,7 @@ workspaceRouter.patch(
         globalHeaderScript: workspace.globalHeaderScript,
         globalFooterScript: workspace.globalFooterScript,
         scriptAllowlist: workspace.scriptAllowlist,
+        notFoundRedirectUrl: workspace.notFoundRedirectUrl,
       },
     });
   }

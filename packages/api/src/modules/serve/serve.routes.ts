@@ -109,12 +109,16 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
   });
 
   if (!page || !page.lastPublishedContentJson) {
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { notFoundRedirectUrl: true } });
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
 
   const config = (page.publishConfig ?? {}) as { targetType?: string; status?: string };
   if (config.targetType !== 'demo' || config.status !== 'published') {
+    const ws = page.workspace;
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
@@ -239,12 +243,16 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
         return;
       }
     }
+    const ws = domain.workspace;
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }
 
   const config = (page.publishConfig ?? {}) as { domainId?: string; targetType?: string; status?: string };
   if (config.domainId !== domainId || config.targetType !== 'custom' || config.status !== 'published') {
+    const ws = domain.workspace;
+    if (ws?.notFoundRedirectUrl) { res.redirect(302, ws.notFoundRedirectUrl); return; }
     res.status(404).send('Page not found');
     return;
   }

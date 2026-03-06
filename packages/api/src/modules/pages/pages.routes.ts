@@ -3,31 +3,12 @@ import { prisma } from '../../shared/db.js';
 import { requireAuth, requireMinRole } from '../auth/auth.middleware.js';
 import { requireWorkspace } from '../workspace/workspace.middleware.js';
 import { detectForms, suggestCanonicalField } from './pages.forms.js';
+import { slugify, generateUniqueSlug } from '../../shared/slugify.js';
 
 export const pagesRouter = Router();
 
 const readMiddleware = [requireAuth, requireWorkspace];
 const writeMiddleware = [requireAuth, requireWorkspace, requireMinRole('Editor')];
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function generateUniqueSlug(base: string, existing: string[]): string {
-  let slug = slugify(base) || 'page';
-  let candidate = slug;
-  let n = 1;
-  while (existing.includes(candidate)) {
-    candidate = `${slug}-${n}`;
-    n++;
-  }
-  return candidate;
-}
 
 pagesRouter.post('/', ...writeMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
@@ -104,6 +85,7 @@ pagesRouter.get('/', ...readMiddleware, async (req: Request, res: Response) => {
       slug: true,
       folderId: true,
       version: true,
+      publishConfig: true,
       createdAt: true,
       formBindings: true,
     },

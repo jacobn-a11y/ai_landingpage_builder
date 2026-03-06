@@ -1,4 +1,7 @@
 import { app } from './app.js';
+import { validateEnv } from './shared/env.js';
+
+validateEnv();
 
 const PORT = process.env.PORT ?? 3001;
 

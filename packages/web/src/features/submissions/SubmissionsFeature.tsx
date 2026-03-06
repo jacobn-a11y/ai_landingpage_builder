@@ -169,10 +169,14 @@ function SubmissionDetail({
   submission: Submission;
   onClose: () => void;
 }) {
+  const { showError } = useToast();
   const [detail, setDetail] = useState<Submission | null>(null);
   useEffect(() => {
-    api.submissions.get(submission.id).then(({ submission: s }) => setDetail(s));
-  }, [submission.id]);
+    api.submissions
+      .get(submission.id)
+      .then(({ submission: s }) => setDetail(s))
+      .catch((e) => showError(e instanceof Error ? e.message : 'Failed to load submission'));
+  }, [submission.id, showError]);
 
   if (!detail) return null;
   const payload = (detail.payloadJson || {}) as Record<string, unknown>;

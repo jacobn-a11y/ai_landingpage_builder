@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { FolderNode } from '@/lib/api';
+import { slugify } from '@/lib/slugify';
 import { PAGE_TEMPLATES } from './page-templates';
 
 interface CreatePageDialogProps {
@@ -25,16 +26,6 @@ interface CreatePageDialogProps {
   onSubmit: (data: { name: string; slug: string; folderId?: string; contentJson?: object }) => Promise<void>;
   folders: FolderNode[];
   onImportClick?: () => void;
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    || 'page';
 }
 
 function flattenFolders(nodes: FolderNode[], prefix = ''): { id: string; name: string; label: string }[] {

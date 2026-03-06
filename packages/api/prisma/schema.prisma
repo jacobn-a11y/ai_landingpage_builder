@@ -17,6 +17,7 @@ model Workspace {
   globalHeaderScript   String?   // Admin-only global script injected before </head>
   globalFooterScript   String?   // Admin-only global script injected before </body>
   scriptAllowlist      Json?     @default("[]") // [{ domain, pathPrefix? }]
+  notFoundRedirectUrl  String?   // Global 404 redirect URL (external)
   createdAt            DateTime  @default(now())
 
   users      User[]
@@ -166,6 +167,7 @@ model Submission {
   @@index([workspaceId])
   @@index([pageId])
   @@index([createdAt])
+  @@index([workspaceId, createdAt])
 }
 
 model Integration {

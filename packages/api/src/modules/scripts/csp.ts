@@ -31,6 +31,9 @@ export function buildCspFromAllowlist(allowlist: ScriptAllowlist | null | undefi
     "img-src 'self' data: https:",
     "font-src 'self' data:",
     "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
   ];
   return directives.join('; ');
 }

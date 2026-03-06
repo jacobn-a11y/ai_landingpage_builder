@@ -199,12 +199,14 @@ export function PageEditFeature() {
       .then(({ page: p }) => {
         setPage(p);
         setError(null);
+        document.title = `${p.name} — Editor`;
       })
       .catch(() => {
         setPage(null);
         setError('Page not found');
       })
       .finally(() => setLoading(false));
+    return () => { document.title = 'Replica Pages'; };
   }, [id]);
 
   if (loading) {

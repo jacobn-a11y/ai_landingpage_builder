@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,7 +14,7 @@ interface FolderTreeProps {
   onToggleExpand: (id: string) => void;
 }
 
-function FolderItem({
+const FolderItem = memo(function FolderItem({
   folder,
   depth,
   selectedFolderId,
@@ -103,7 +104,7 @@ function FolderItem({
       )}
     </div>
   );
-}
+});
 
 export function FolderTree({
   folders,

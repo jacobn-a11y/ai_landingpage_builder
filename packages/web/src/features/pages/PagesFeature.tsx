@@ -269,6 +269,7 @@ export function PagesFeature() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              title="Edit page"
                               onClick={() => navigate(`/pages/${page.id}/edit`)}
                             >
                               <Pencil className="h-4 w-4" />
@@ -295,6 +296,7 @@ export function PagesFeature() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              title="Clone page"
                               onClick={() => setClonePage(page)}
                             >
                               <Copy className="h-4 w-4" />
@@ -303,6 +305,7 @@ export function PagesFeature() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-destructive hover:text-destructive"
+                              title="Delete page"
                               onClick={() => setDeletePage(page)}
                             >
                               <Trash2 className="h-4 w-4" />

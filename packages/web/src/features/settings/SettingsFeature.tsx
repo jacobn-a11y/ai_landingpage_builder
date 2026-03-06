@@ -13,6 +13,7 @@ export function SettingsFeature() {
   const [name, setName] = useState('');
   const [allowedEmailDomains, setAllowedEmailDomains] = useState<string[]>([]);
   const [newDomain, setNewDomain] = useState('');
+  const [notFoundRedirectUrl, setNotFoundRedirectUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
@@ -23,6 +24,7 @@ export function SettingsFeature() {
       setWorkspace(w);
       setName(w.name);
       setAllowedEmailDomains(w.allowedEmailDomains ?? []);
+      setNotFoundRedirectUrl(w.notFoundRedirectUrl ?? '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -75,6 +77,23 @@ export function SettingsFeature() {
 
   const removeDomain = (domain: string) => {
     setAllowedEmailDomains(allowedEmailDomains.filter((d) => d !== domain));
+  };
+
+  const handleSaveNotFoundUrl = async () => {
+    if (!workspace || !isAdmin) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { workspace: w } = await api.workspaces.updateSettings(workspace.id, {
+        notFoundRedirectUrl: notFoundRedirectUrl.trim() || null,
+      });
+      setWorkspace(w);
+      setNotFoundRedirectUrl(w.notFoundRedirectUrl ?? '');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -168,6 +187,31 @@ export function SettingsFeature() {
             <Button onClick={handleSaveDomains} disabled={saving}>
               {saving ? 'Saving...' : 'Save domains'}
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>404 redirect URL</CardTitle>
+            <CardDescription>
+              When a published page is not found, redirect visitors to this URL. Leave empty to show the default 404 page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                value={notFoundRedirectUrl}
+                onChange={(e) => setNotFoundRedirectUrl(e.target.value)}
+                placeholder="https://example.com/404"
+                className="max-w-sm"
+                type="url"
+              />
+              <Button onClick={handleSaveNotFoundUrl} disabled={saving}>
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

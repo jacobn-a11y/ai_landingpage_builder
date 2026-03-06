@@ -194,8 +194,8 @@ export function EditorProvider({
       }
       await api.pages.update(pageId, payload);
       setLastSaved(new Date());
-    } catch {
-      // Could surface error
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
