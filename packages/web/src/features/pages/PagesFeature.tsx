@@ -19,6 +19,7 @@ import { FormMappingModal } from './FormMappingModal';
 import { ImportPageDialog } from './ImportPageDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/contexts/ToastContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Pencil, Copy, Trash2, FormInput, FileUp } from 'lucide-react';
 
 function findFolderById(nodes: FolderNode[], id: string): FolderNode | null {
@@ -33,6 +34,7 @@ function findFolderById(nodes: FolderNode[], id: string): FolderNode | null {
 export function PagesFeature() {
   const navigate = useNavigate();
   const { showError } = useToast();
+  const { canEdit } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [pages, setPages] = useState<Page[]>([]);
   const [folders, setFolders] = useState<FolderNode[]>([]);
@@ -214,16 +216,18 @@ export function PagesFeature() {
               Manage your landing pages. Create, edit, and organize in folders.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setImportPageOpen(true)}>
-              <FileUp className="h-4 w-4 mr-2" />
-              Import HTML
-            </Button>
-            <Button onClick={() => setCreatePageOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create page
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportPageOpen(true)}>
+                <FileUp className="h-4 w-4 mr-2" />
+                Import HTML
+              </Button>
+              <Button onClick={() => setCreatePageOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create page
+              </Button>
+            </div>
+          )}
         </div>
 
         <Card>
@@ -235,7 +239,7 @@ export function PagesFeature() {
                   <TableHead>Slug</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last modified</TableHead>
-                  <TableHead className="w-32" />
+                  {canEdit && <TableHead className="w-32" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -258,52 +262,54 @@ export function PagesFeature() {
                       <TableCell className="text-muted-foreground">
                         {new Date(page.createdAt).toLocaleDateString()}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => navigate(`/pages/${page.id}/edit`)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Import HTML to replace content"
-                            onClick={() => setReplaceContentPage(page)}
-                          >
-                            <FileUp className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Map form"
-                            onClick={() => setMapFormPage(page)}
-                          >
-                            <FormInput className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setClonePage(page)}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => setDeletePage(page)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {canEdit && (
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => navigate(`/pages/${page.id}/edit`)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Import HTML to replace content"
+                              onClick={() => setReplaceContentPage(page)}
+                            >
+                              <FileUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Map form"
+                              onClick={() => setMapFormPage(page)}
+                            >
+                              <FormInput className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => setClonePage(page)}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => setDeletePage(page)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

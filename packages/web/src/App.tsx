@@ -78,7 +78,14 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="scripts" element={<ScriptsFeature />} />
+        <Route
+          path="scripts"
+          element={
+            <ProtectedRoute requireAdmin>
+              <ScriptsFeature />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="users"
           element={

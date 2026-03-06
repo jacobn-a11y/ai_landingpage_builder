@@ -1,6 +1,7 @@
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import type { FolderNode } from '@/lib/api';
 
 interface FolderTreeProps {
@@ -29,6 +30,7 @@ function FolderItem({
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
 }) {
+  const { canEdit } = useAuth();
   const hasChildren = folder.children.length > 0;
   const isExpanded = expandedIds.has(folder.id);
   const isSelected = selectedFolderId === folder.id;
@@ -69,17 +71,19 @@ function FolderItem({
           )}
           <span className="truncate">{folder.name}</span>
         </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            onCreateFolder(folder.id);
-          }}
-        >
-          <Plus className="h-3 w-3" />
-        </Button>
+        {canEdit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateFolder(folder.id);
+            }}
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+        )}
       </div>
       {hasChildren && isExpanded && (
         <div>
@@ -109,6 +113,7 @@ export function FolderTree({
   expandedIds,
   onToggleExpand,
 }: FolderTreeProps) {
+  const { canEdit } = useAuth();
   return (
     <div className="space-y-1">
       <button
@@ -145,15 +150,17 @@ export function FolderTree({
           onToggleExpand={onToggleExpand}
         />
       ))}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start mt-2"
-        onClick={() => onCreateFolder()}
-      >
-        <Plus className="h-4 w-4 mr-2" />
-        New folder
-      </Button>
+      {canEdit && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start mt-2"
+          onClick={() => onCreateFolder()}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          New folder
+        </Button>
+      )}
     </div>
   );
 }
