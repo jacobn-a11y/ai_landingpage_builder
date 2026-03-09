@@ -159,15 +159,20 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<{ embedPolicy: 'allow' | 'deny' | null; status?: string }>) =>
+    update: (id: string, data: Partial<Domain>) =>
       fetchApi<{ domain: Domain }>(`/domains/${id}`, {
         method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    updateSettings: (id: string, data: { embedPolicy?: 'allow' | 'deny' | null; custom404PageId?: string | null; securityHeaders?: SecurityHeaders | null }) =>
+      fetchApi<{ domain: Domain }>(`/domains/${id}`, {
+        method: 'PUT',
         body: JSON.stringify(data),
       }),
     verify: (id: string) =>
       fetchApi<{
         domain: Domain;
-        verification: { success: boolean; txtOk: boolean; cnameOk: boolean; isCloudflare?: boolean };
+        verification: { success: boolean; txtOk: boolean; cnameOk: boolean; hasConflictingA?: boolean };
       }>(`/domains/${id}/verify`, { method: 'POST' }),
     delete: (id: string) =>
       fetchApi<{ ok: boolean }>(`/domains/${id}`, { method: 'DELETE' }),
@@ -377,6 +382,11 @@ export type Form = {
   version: number;
 };
 
+export type SecurityHeaders = {
+  hstsEnabled?: boolean;
+  xFrameOptions?: 'DENY' | 'SAMEORIGIN' | null;
+};
+
 export type Domain = {
   id: string;
   workspaceId: string;
@@ -388,6 +398,9 @@ export type Domain = {
   cnameTarget?: string | null;
   sslStatus?: string | null;
   embedPolicy?: string | null;
+  custom404PageId?: string | null;
+  securityHeaders?: SecurityHeaders | null;
+  redirects?: Array<{ from: string; to: string; status: number }> | null;
   createdAt: string;
 };
 

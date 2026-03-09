@@ -10,6 +10,16 @@ import {
   looksLikeButton,
   isSectionLike,
 } from './htmlParser';
+import {
+  generateId,
+  getElementHtml,
+  serializeElement,
+  extractInlineStyles,
+  getInnerHtml,
+  hasInlineFormatting,
+  isComplexHtml,
+  resolveImageSrc,
+} from './blockConverterUtils';
 
 interface ConvertResult {
   block: BaseBlock;
@@ -20,81 +30,12 @@ interface ConvertOptions {
   baseUrl: string;
 }
 
-function generateId(): string {
-  return `block-${Math.random().toString(36).slice(2, 11)}`;
-}
+const SKIP_TAGS = new Set(['script', 'style', 'noscript', 'link', 'meta']);
+const CONTAINER_TAGS = new Set(['div', 'article', 'aside', 'header', 'footer', 'main', 'nav']);
 
-function getElementHtml(el: Element): string {
-  return el.outerHTML;
-}
-
-function serializeElement(el: Element): string {
-  const div = el.ownerDocument.createElement('div');
-  div.appendChild(el.cloneNode(true));
-  return div.innerHTML;
-}
-
-/**
- * Extract inline styles from an element's style attribute.
- * Returns undefined if no meaningful styles are present.
- */
-function extractInlineStyles(el: Element): Record<string, string> | undefined {
-  const styleAttr = el.getAttribute('style');
-  if (!styleAttr?.trim()) return undefined;
-
-  const styles: Record<string, string> = {};
-  const declarations = styleAttr.split(';');
-  for (const decl of declarations) {
-    const colonIdx = decl.indexOf(':');
-    if (colonIdx === -1) continue;
-    const prop = decl.slice(0, colonIdx).trim();
-    const value = decl.slice(colonIdx + 1).trim();
-    if (prop && value) {
-      styles[prop] = value;
-    }
-  }
-
-  return Object.keys(styles).length > 0 ? styles : undefined;
-}
-
-/**
- * Get the inner HTML content, preserving inline formatting tags.
- */
-function getInnerHtml(el: Element): string {
-  return el.innerHTML.trim();
-}
-
-/**
- * Check if an element contains inline formatting (bold, italic, links, etc.).
- */
-function hasInlineFormatting(el: Element): boolean {
-  const inlineTags = ['strong', 'b', 'em', 'i', 'a', 'span', 'code', 'u', 'mark', 'sub', 'sup', 'br'];
-  for (const tag of inlineTags) {
-    if (el.querySelector(tag)) return true;
-  }
-  return false;
-}
-
-/**
- * Check if element should be treated as Custom HTML (tables, complex layouts).
- */
-function isComplexHtml(el: Element): boolean {
-  const tag = el.tagName.toLowerCase();
-  return tag === 'table' || tag === 'iframe' || tag === 'video' || tag === 'audio';
-}
-
-/**
- * Resolve an image src against a base URL.
- */
-function resolveImageSrc(src: string, baseUrl: string): string {
-  if (!src || !baseUrl) return src;
-  if (src.startsWith('data:') || src.startsWith('blob:')) return src;
-  if (src.startsWith('http://') || src.startsWith('https://')) return src;
-  try {
-    return new URL(src, baseUrl).href;
-  } catch {
-    return src;
-  }
+/** Shorthand: wrap raw HTML in a customHtml block. */
+function customHtmlBlock(id: string, html: string): ConvertResult {
+  return { block: { id, type: 'customHtml', props: { html } } };
 }
 
 /**
@@ -103,35 +44,14 @@ function resolveImageSrc(src: string, baseUrl: string): string {
  */
 function elementToBlock(el: Element, opts: ConvertOptions): ConvertResult | null {
   const tag = el.tagName.toLowerCase();
-
-  // Skip non-visual elements
-  if (tag === 'script' || tag === 'style' || tag === 'noscript' || tag === 'link' || tag === 'meta') {
-    return null;
-  }
+  if (SKIP_TAGS.has(tag)) return null;
 
   const id = generateId();
   const inlineStyles = extractInlineStyles(el);
 
-  // Forms: preserve intact as customHtml
-  if (tag === 'form') {
-    return {
-      block: {
-        id,
-        type: 'customHtml',
-        props: { html: getElementHtml(el) },
-      },
-    };
-  }
-
-  // Complex elements: customHtml
-  if (isComplexHtml(el)) {
-    return {
-      block: {
-        id,
-        type: 'customHtml',
-        props: { html: getElementHtml(el) },
-      },
-    };
+  // Forms and complex elements: preserve intact as customHtml
+  if (tag === 'form' || isComplexHtml(el)) {
+    return customHtmlBlock(id, getElementHtml(el));
   }
 
   // Headings h1-h6 -> headline block type
@@ -158,13 +78,7 @@ function elementToBlock(el: Element, opts: ConvertOptions): ConvertResult | null
 
   // Lists -> customHtml (preserve structure)
   if (tag === 'ul' || tag === 'ol') {
-    return {
-      block: {
-        id,
-        type: 'customHtml',
-        props: { html: getElementHtml(el) },
-      },
-    };
+    return customHtmlBlock(id, getElementHtml(el));
   }
 
   // Images
@@ -233,7 +147,7 @@ function elementToBlock(el: Element, opts: ConvertOptions): ConvertResult | null
   }
 
   // Generic containers: div, article, aside, header, footer, main, nav
-  if (['div', 'article', 'aside', 'header', 'footer', 'main', 'nav'].includes(tag)) {
+  if (CONTAINER_TAGS.has(tag)) {
     return convertContainer(el, id, opts, inlineStyles);
   }
 
@@ -249,13 +163,7 @@ function elementToBlock(el: Element, opts: ConvertOptions): ConvertResult | null
   }
 
   // Fallback: customHtml for anything else
-  return {
-    block: {
-      id,
-      type: 'customHtml',
-      props: { html: serializeElement(el) },
-    },
-  };
+  return customHtmlBlock(id, serializeElement(el));
 }
 
 /**
@@ -307,27 +215,14 @@ function convertContainer(
 }
 
 function getDirectContent(el: Element): Element[] {
-  const result: Element[] = [];
-  for (const child of el.children) {
-    const tag = child.tagName.toLowerCase();
-    if (tag !== 'script' && tag !== 'style' && tag !== 'noscript' && tag !== 'link') {
-      result.push(child);
-    }
-  }
-  return result;
+  return Array.from(el.children).filter((c) => !SKIP_TAGS.has(c.tagName.toLowerCase()));
 }
 
 function processChildElements(parent: Element, opts: ConvertOptions): ConvertResult[] {
   const result: ConvertResult[] = [];
-  for (const child of parent.children) {
-    const tag = child.tagName.toLowerCase();
-    if (tag === 'script' || tag === 'style' || tag === 'noscript' || tag === 'link') {
-      continue;
-    }
+  for (const child of getDirectContent(parent)) {
     const converted = elementToBlock(child, opts);
-    if (converted) {
-      result.push(converted);
-    }
+    if (converted) result.push(converted);
   }
   return result;
 }

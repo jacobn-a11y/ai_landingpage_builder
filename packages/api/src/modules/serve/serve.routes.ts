@@ -14,7 +14,8 @@ import { renderContentToHtml, renderFullPageHtml, type PageContentJson, type Sti
 import type { HookedFormBinding, FormSuccessConfig } from './form-interception-script.js';
 import type { RedirectRule } from '../publishing/publishing.types.js';
 import { DomainStatus } from '../domains/domains.types.js';
-import { buildCspFromAllowlist } from '../scripts/csp.js';
+import { randomBytes } from 'node:crypto';
+import { generateCspHeader } from '../scripts/csp.js';
 import type { ScriptAllowlist } from '../scripts/scripts.types.js';
 
 export const serveRouter = Router();
@@ -49,15 +50,20 @@ function getFormActionUrl(req: Request): string {
   return `${proto}://${host}/api/v1/submissions`;
 }
 
+/** Generate a cryptographically random nonce for CSP inline scripts. */
+function generateNonce(): string {
+  return randomBytes(16).toString('base64');
+}
+
 function securityHeaders(
   res: Response,
-  opts: { embedPolicy?: 'allow' | 'deny' | null; scriptAllowlist?: ScriptAllowlist | null }
+  opts: { embedPolicy?: 'allow' | 'deny' | null; scriptAllowlist?: ScriptAllowlist | null; nonce: string }
 ): void {
-  const { embedPolicy, scriptAllowlist } = opts;
+  const { embedPolicy, scriptAllowlist, nonce } = opts;
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', embedPolicy === 'allow' ? 'SAMEORIGIN' : 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  const csp = buildCspFromAllowlist(scriptAllowlist);
+  const csp = generateCspHeader(scriptAllowlist, nonce);
   if (csp) {
     res.setHeader('Content-Security-Policy', csp);
   }
@@ -130,7 +136,7 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
       slug: pageSlug,
       lastPublishedContentJson: { not: Prisma.DbNull },
     },
-    include: { workspace: true },
+    include: { workspace: true, formBindings: true },
   });
 
   if (!page || !page.lastPublishedContentJson) {
@@ -162,6 +168,8 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
     pageId: page.id,
     urlParams,
   });
+  const hookedBindings = extractHookedBindings(page.formBindings as Array<{ type: string; selector?: string | null; fieldMappings?: unknown }>);
+  const formSuccessConfig = extractFormSuccessConfig(page.publishConfig);
   const scripts = (page.scripts ?? {}) as { header?: string; footer?: string };
   const html = renderFullPageHtml({
     contentHtml,
@@ -176,6 +184,8 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
     pageSettings: content?.pageSettings ?? null,
     stickyBars: content?.stickyBars,
     popups: content?.popups,
+    hookedFormBindings: hookedBindings,
+    formSuccessConfig,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -221,6 +231,7 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
       slug: pageSlug,
       lastPublishedContentJson: { not: Prisma.DbNull },
     },
+    include: { formBindings: true },
   });
 
   if (!page || !page.lastPublishedContentJson) {
@@ -299,6 +310,8 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
     pageId: page.id,
     urlParams,
   });
+  const domainHookedBindings = extractHookedBindings(page.formBindings as Array<{ type: string; selector?: string | null; fieldMappings?: unknown }>);
+  const domainFormSuccessConfig = extractFormSuccessConfig(page.publishConfig);
   const scripts = (page.scripts ?? {}) as { header?: string; footer?: string };
   const html = renderFullPageHtml({
     contentHtml,
@@ -313,6 +326,8 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
     pageSettings: content?.pageSettings ?? null,
     stickyBars: content?.stickyBars,
     popups: content?.popups,
+    hookedFormBindings: domainHookedBindings,
+    formSuccessConfig: domainFormSuccessConfig,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');

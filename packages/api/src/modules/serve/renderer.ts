@@ -497,7 +497,7 @@ function getStickyBarsHtml(bars: StickyBarData[]): string {
     .join('\n');
 }
 
-function getPopupsHtml(popups: PopupData[]): string {
+function getPopupsHtml(popups: PopupData[], nonceAttr = ''): string {
   if (!popups?.length) return '';
   const items = popups.map((p) => ({
     id: p.id,
@@ -542,7 +542,7 @@ function getPopupsHtml(popups: PopupData[]): string {
   });
 })();
 `;
-  return popupMarkup + '\n<script>' + script + '</script>';
+  return popupMarkup + `\n<script${nonceAttr}>` + script + '</script>';
 }
 
 /** Build the <script> tag for hooked form interception (empty string if none). */
@@ -557,7 +557,8 @@ function buildHookedFormScript(opts: RenderPageOptions): string {
     bindings,
     success,
   });
-  return `<script>${script}</script>`;
+  const nonceAttr = opts.nonce ? ` nonce="${escapeHtml(opts.nonce)}"` : '';
+  return `<script${nonceAttr}>${script}</script>`;
 }
 
 export function renderFullPageHtml(opts: RenderPageOptions): string {
@@ -573,7 +574,9 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
     pageSettings,
     stickyBars,
     popups,
+    nonce,
   } = opts;
+  const nonceAttr = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
   const headerScripts = [globalHeaderScript ?? '', scripts?.header ?? '']
     .filter(Boolean)
     .join('\n');
@@ -605,7 +608,7 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   <meta property="og:title" content="${escapeHtml(ogTitle)}" />
   ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : ''}
   ${scopedStyleTags}
-  <script>
+  <script${nonceAttr}>
     window.__REPLICA_PAGE__ = { pageId: "${escapeHtml(pageId)}", pageName: "${escapeHtml(pageName ?? '')}", pageSlug: "${escapeHtml(pageSlug)}", formActionUrl: "${escapeHtml(formActionUrl)}" };
   </script>
   ${headerScripts}
@@ -615,9 +618,9 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   <main class="min-h-screen">
     ${contentHtml}
   </main>
-  ${getPopupsHtml(popups ?? [])}
-  <script>${getUtmCaptureScript()}</script>
-  <script>
+  ${getPopupsHtml(popups ?? [], nonceAttr)}
+  <script${nonceAttr}>${getUtmCaptureScript()}</script>
+  <script${nonceAttr}>
     (function(){
       var cfg = window.__REPLICA_PAGE__ || {};
       var formAction = cfg.formActionUrl || '/api/v1/submissions';
@@ -628,8 +631,8 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
       });
     })();
   </script>
-  <script>${getFormSubmitHandlerScript()}</script>
-  <script>${getCountdownScript()}</script>
+  <script${nonceAttr}>${getFormSubmitHandlerScript()}</script>
+  <script${nonceAttr}>${getCountdownScript()}</script>
   ${buildHookedFormScript(opts)}
   ${footerScripts}
 </body>
