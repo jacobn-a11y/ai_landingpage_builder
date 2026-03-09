@@ -77,7 +77,7 @@ export function ConversationHistory({
     return [...convos].sort((a, b) => b.updatedAt - a.updatedAt);
   }, [getPageConversations, pageId]);
 
-  // Close on outside click
+  // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
@@ -85,8 +85,15 @@ export function ConversationHistory({
         setOpen(false);
       }
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [open]);
 
   const handleNew = useCallback(() => {
@@ -122,6 +129,8 @@ export function ConversationHistory({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="true"
         className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
       >
         {/* Chat icon */}
@@ -183,13 +192,16 @@ export function ConversationHistory({
             ) : (
               <ul className="py-1">
                 {conversations.map((convo) => (
-                  <li key={convo.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleSelect(convo)}
-                      className={`w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors ${
+                  <li key={convo.id} role="menuitem">
+                    <div
+                      className={`w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors cursor-pointer ${
                         convo.id === activeConversationId ? 'bg-indigo-50' : ''
                       }`}
+                      onClick={() => handleSelect(convo)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(convo); } }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Load conversation: ${getPreview(convo)}`}
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-800 truncate">
@@ -212,7 +224,7 @@ export function ConversationHistory({
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
-                    </button>
+                    </div>
                   </li>
                 ))}
               </ul>

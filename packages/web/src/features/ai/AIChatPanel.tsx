@@ -28,8 +28,9 @@ const EXAMPLE_PROMPTS = [
 
 function TypingIndicator() {
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start" role="status" aria-label="AI is thinking">
       <div className="bg-gray-50 rounded-lg p-3 mr-8">
+        <span className="sr-only">AI is thinking...</span>
         <div className="flex gap-1">
           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -73,6 +74,16 @@ export function AIChatPanel({
       setTimeout(() => textareaRef.current?.focus(), 200);
     }
   }, [isOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
 
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
@@ -132,11 +143,24 @@ export function AIChatPanel({
     : 'Editing: Whole Page';
 
   return (
-    <div
-      className={`fixed right-0 top-0 h-full w-[400px] bg-white border-l shadow-xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
-      }`}
-    >
+    <>
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-40 transition-opacity"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        role="dialog"
+        aria-label="AI Assistant"
+        aria-modal={isOpen}
+        aria-hidden={!isOpen}
+        className={`fixed right-0 top-0 h-full w-full sm:w-[400px] max-w-full bg-white border-l shadow-xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-white shrink-0">
         <div className="flex items-center gap-2">
@@ -148,6 +172,7 @@ export function AIChatPanel({
             onClick={clearHistory}
             className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             title="Clear chat history"
+            aria-label="Clear chat history"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -155,6 +180,7 @@ export function AIChatPanel({
             onClick={onClose}
             className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             title="Close AI panel"
+            aria-label="Close AI panel"
           >
             <X className="h-4 w-4" />
           </button>
@@ -182,7 +208,7 @@ export function AIChatPanel({
                 <button
                   key={prompt}
                   onClick={() => handleExampleClick(prompt)}
-                  className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                  className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 transition-colors"
                 >
                   {prompt}
                 </button>
@@ -234,9 +260,10 @@ export function AIChatPanel({
           </button>
         </div>
         <p className="text-[10px] text-gray-400 mt-1.5 text-center">
-          Shift+Enter for new line
+          Shift+Enter for new line &middot; Escape to close
         </p>
       </div>
     </div>
+    </>
   );
 }

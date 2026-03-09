@@ -22,7 +22,8 @@ export function InspectorSection({
     <div className="space-y-2">
       <button
         type="button"
-        className="flex items-center gap-1 w-full text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground"
+        aria-expanded={open}
+        className="flex items-center gap-1 w-full text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
         onClick={() => setOpen(!open)}
       >
         {open ? (

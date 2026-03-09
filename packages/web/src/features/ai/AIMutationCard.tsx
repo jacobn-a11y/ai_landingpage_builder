@@ -31,12 +31,14 @@ function SingleMutationRow({
       </span>
       <button
         onClick={onApply}
+        aria-label={`Apply change: ${describeMutation(mutation)}`}
         className="px-2.5 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 transition-colors flex-shrink-0"
       >
         Apply
       </button>
       <button
         onClick={onDiscard}
+        aria-label={`Discard change: ${describeMutation(mutation)}`}
         className="px-2.5 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors flex-shrink-0"
       >
         Discard

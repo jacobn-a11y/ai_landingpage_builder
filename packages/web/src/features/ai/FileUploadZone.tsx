@@ -159,6 +159,8 @@ export function FileUploadZone({
           {p.analysis.colorPalette.map((hex, i) => (
             <div
               key={i}
+              role="img"
+              aria-label={`Color: ${hex}`}
               className="w-7 h-7 rounded border border-gray-200"
               style={{ backgroundColor: hex }}
               title={hex}
@@ -233,6 +235,10 @@ export function FileUploadZone({
     <div className="w-full">
       {/* Drop zone */}
       <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
+        aria-label="Upload design file for analysis"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -297,7 +303,16 @@ export function FileUploadZone({
 
       {/* Error */}
       {error && (
-        <p className="mt-3 text-sm text-red-600">{error}</p>
+        <div className="mt-3 flex items-center gap-2">
+          <p className="text-sm text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => { setError(null); inputRef.current?.click(); }}
+            className="text-sm font-medium text-indigo-600 hover:underline shrink-0"
+          >
+            Try again
+          </button>
+        </div>
       )}
 
       {/* Analysis result */}
