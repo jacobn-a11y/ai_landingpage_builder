@@ -2,7 +2,13 @@
  * Simple HTML sanitizer for rich text. Allows only safe inline formatting tags.
  */
 
-const ALLOWED_TAGS = ['b', 'i', 'u', 'strong', 'em', 'a', 'br'];
+const ALLOWED_TAGS = [
+  'b', 'i', 'u', 's', 'strong', 'em', 'a', 'br', 'span',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div',
+  'ul', 'ol', 'li',
+  'sub', 'sup', 'strike', 'del',
+  'blockquote', 'pre', 'code',
+];
 
 export function sanitizeHtml(html: string): string {
   if (!html?.trim()) return '';

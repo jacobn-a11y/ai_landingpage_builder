@@ -5,6 +5,13 @@
 import { useEditor } from './EditorContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const FONT_OPTIONS = [
   { value: '', label: 'Default' },
@@ -32,18 +39,21 @@ export function PageSettingsPanel() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="page-font" className="text-xs">Default font</Label>
-        <select
-          id="page-font"
-          value={pageSettings?.fontFamily ?? ''}
-          onChange={(e) => updatePageSettings({ fontFamily: e.target.value || undefined })}
-          className="w-full h-8 px-2 text-sm border rounded bg-background"
+        <Select
+          value={pageSettings?.fontFamily ?? '__default__'}
+          onValueChange={(v) => updatePageSettings({ fontFamily: v === '__default__' ? undefined : v })}
         >
-          {FONT_OPTIONS.map((o) => (
-            <option key={o.value || 'default'} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="h-8 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FONT_OPTIONS.map((o) => (
+              <SelectItem key={o.value || 'default'} value={o.value || '__default__'}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-2">
         <Label htmlFor="page-seo-desc" className="text-xs">Meta description</Label>

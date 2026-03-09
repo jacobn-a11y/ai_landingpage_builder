@@ -1,25 +1,14 @@
 import { useState, useEffect } from 'react';
-import { api, type Page, type Domain, type PublishStatus } from '@/lib/api';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { api, type Page, type Domain, type PublishStatus, type PublishTargetType } from '@/lib/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { ExternalLink, Loader2, Copy, Check } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ExternalLink, Loader2, Calendar, Globe } from 'lucide-react';
 import { useToast } from '@/contexts/ToastContext';
+import { PublishScheduleSection } from './PublishScheduleSection';
+import { PublishUrlDisplay } from './PublishUrlDisplay';
 
 interface PublishDialogProps {
   open: boolean;
@@ -33,32 +22,29 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
   const [status, setStatus] = useState<PublishStatus | null>(null);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(false);
-  const [publishTarget, setPublishTarget] = useState<'demo' | 'custom'>('demo');
+  const [publishTarget, setPublishTarget] = useState<PublishTargetType>('demo');
   const [domainId, setDomainId] = useState<string>('');
   const [path, setPath] = useState(page.slug);
+  const [webflowSubdomain, setWebflowSubdomain] = useState('');
   const [schedulePublishAt, setSchedulePublishAt] = useState('');
   const [scheduleUnpublishAt, setScheduleUnpublishAt] = useState('');
-  const [copied, setCopied] = useState(false);
-
   const pathClean = (path.startsWith('/') ? path.slice(1) : path) || page.slug;
-  const destinationUrl =
-    publishTarget === 'demo'
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/serve/demo/${page.workspaceId}/${pathClean}`
-      : domainId
-        ? `https://${domains.find((d) => d.id === domainId)?.hostname ?? ''}/${pathClean}`
-        : null;
 
-  const copyUrl = () => {
-    if (!destinationUrl) return;
-    navigator.clipboard.writeText(destinationUrl).then(
-      () => {
-        setCopied(true);
-        showSuccess('Copied to clipboard');
-        setTimeout(() => setCopied(false), 2000);
-      },
-      () => showError('Failed to copy')
-    );
+  const getDestinationUrl = (): string | null => {
+    if (publishTarget === 'demo') {
+      return `${typeof window !== 'undefined' ? window.location.origin : ''}/api/v1/serve/demo/${page.workspaceId}/${pathClean}`;
+    }
+    if (publishTarget === 'custom' && domainId) {
+      const hostname = domains.find((d) => d.id === domainId)?.hostname ?? '';
+      return `https://${hostname}/${pathClean}`;
+    }
+    if (publishTarget === 'webflow_subdomain' && webflowSubdomain) {
+      return `https://${webflowSubdomain}.webflow.io/${pathClean}`;
+    }
+    return null;
   };
+
+  const destinationUrl = getDestinationUrl();
 
   useEffect(() => {
     if (!open || !page.id) return;
@@ -68,18 +54,18 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
       .then(({ publishStatus }) => {
         setStatus(publishStatus);
         const cfg = publishStatus?.publishConfig;
+        if (cfg?.targetType) setPublishTarget(cfg.targetType);
+        if (cfg?.webflowSubdomain) setWebflowSubdomain(cfg.webflowSubdomain);
         if (cfg?.publishAt) {
           try {
-            const d = new Date(cfg.publishAt);
-            setSchedulePublishAt(d.toISOString().slice(0, 16));
+            setSchedulePublishAt(new Date(cfg.publishAt).toISOString().slice(0, 16));
           } catch {
             setSchedulePublishAt('');
           }
         } else setSchedulePublishAt('');
         if (cfg?.unpublishAt) {
           try {
-            const d = new Date(cfg.unpublishAt);
-            setScheduleUnpublishAt(d.toISOString().slice(0, 16));
+            setScheduleUnpublishAt(new Date(cfg.unpublishAt).toISOString().slice(0, 16));
           } catch {
             setScheduleUnpublishAt('');
           }
@@ -101,15 +87,17 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
   const handlePublish = async () => {
     setLoading(true);
     try {
-      const data: { targetType: 'demo' | 'custom'; domainId?: string; path?: string } = {
+      const data: Parameters<typeof api.pages.publish>[1] = {
         targetType: publishTarget,
+        path: path.startsWith('/') ? path : `/${path}`,
       };
       if (publishTarget === 'custom') {
         if (!domainId) return;
         data.domainId = domainId;
-        data.path = path.startsWith('/') ? path : `/${path}`;
-      } else {
-        data.path = path.startsWith('/') ? path : `/${path}`;
+      }
+      if (publishTarget === 'webflow_subdomain') {
+        if (!webflowSubdomain) return;
+        data.webflowSubdomain = webflowSubdomain;
       }
       await api.pages.publish(page.id, data);
       const { publishStatus } = await api.pages.getPublishStatus(page.id);
@@ -141,9 +129,13 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
   const handleScheduleUpdate = async () => {
     setLoading(true);
     try {
-      await api.pages.updatePublishSchedule(page.id, {
-        publishAt: schedulePublishAt || null,
-        unpublishAt: scheduleUnpublishAt || null,
+      await api.pages.schedule(page.id, {
+        publishAt: schedulePublishAt || undefined,
+        unpublishAt: scheduleUnpublishAt || undefined,
+        targetType: publishTarget,
+        domainId: publishTarget === 'custom' ? domainId : undefined,
+        path: path.startsWith('/') ? path : `/${path}`,
+        webflowSubdomain: publishTarget === 'webflow_subdomain' ? webflowSubdomain : undefined,
       });
       const { publishStatus } = await api.pages.getPublishStatus(page.id);
       setStatus(publishStatus);
@@ -157,6 +149,10 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
   };
 
   const isPublished = status?.status === 'published';
+  const isScheduled = status?.status === 'scheduled';
+  const publishDisabled = loading || (publishTarget === 'custom' && !domainId) || (publishTarget === 'webflow_subdomain' && !webflowSubdomain);
+
+  const targetLabel = publishTarget === 'demo' ? 'demo' : publishTarget === 'webflow_subdomain' ? 'Webflow' : 'domain';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,15 +160,22 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
         <DialogHeader>
           <DialogTitle>Publish</DialogTitle>
           <DialogDescription>
-            Publish this page to a demo domain or a verified custom domain.
+            Publish this page to a demo domain, custom domain, or Webflow subdomain.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Current status */}
           {status && (
             <div className="rounded-md border p-3">
               <p className="text-sm font-medium">Status</p>
               <p className="text-sm text-muted-foreground">{status.targetLabel}</p>
+              {isScheduled && status.publishConfig?.publishAt && (
+                <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Publishes {new Date(status.publishConfig.publishAt).toLocaleString()}
+                </p>
+              )}
               {status.url && (
                 <a
                   href={status.url}
@@ -186,19 +189,26 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
             </div>
           )}
 
+          {/* Target selector */}
           <div className="space-y-2">
             <Label>Publish target</Label>
-            <Select value={publishTarget} onValueChange={(v) => setPublishTarget(v as 'demo' | 'custom')}>
+            <Select value={publishTarget} onValueChange={(v) => setPublishTarget(v as PublishTargetType)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="demo">Demo domain</SelectItem>
                 <SelectItem value="custom">Custom domain</SelectItem>
+                <SelectItem value="webflow_subdomain">
+                  <span className="flex items-center gap-1">
+                    <Globe className="h-3 w-3" /> Webflow subdomain
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
+          {/* Custom domain selector */}
           {publishTarget === 'custom' && (
             <div className="space-y-2">
               <Label>Domain</Label>
@@ -222,6 +232,23 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
             </div>
           )}
 
+          {/* Webflow subdomain input */}
+          {publishTarget === 'webflow_subdomain' && (
+            <div className="space-y-2">
+              <Label>Webflow subdomain</Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  value={webflowSubdomain}
+                  onChange={(e) => setWebflowSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder="mysite"
+                  className="max-w-[200px]"
+                />
+                <span className="text-sm text-muted-foreground">.webflow.io</span>
+              </div>
+            </div>
+          )}
+
+          {/* Path */}
           <div className="space-y-2">
             <Label>Path</Label>
             <Input
@@ -231,54 +258,16 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
             />
           </div>
 
-          {destinationUrl && (
-            <div className="space-y-2">
-              <Label>Destination URL</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={destinationUrl}
-                  className="font-mono text-sm"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={copyUrl}
-                  title="Copy URL"
-                  aria-label={copied ? 'Copied to clipboard' : 'Copy URL'}
-                >
-                  {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Append UTM params for tracking, e.g. ?utm_source=newsletter&utm_campaign=launch.
-                Page name &quot;{page.name}&quot; is sent with form submissions.
-              </p>
-            </div>
-          )}
+          {/* Destination URL with copy */}
+          {destinationUrl && <PublishUrlDisplay url={destinationUrl} />}
 
-          <div className="space-y-2">
-            <Label>Schedule (optional)</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">Publish at</Label>
-                <Input
-                  type="datetime-local"
-                  value={schedulePublishAt}
-                  onChange={(e) => setSchedulePublishAt(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Unpublish at</Label>
-                <Input
-                  type="datetime-local"
-                  value={scheduleUnpublishAt}
-                  onChange={(e) => setScheduleUnpublishAt(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
+          {/* Schedule */}
+          <PublishScheduleSection
+            schedulePublishAt={schedulePublishAt}
+            scheduleUnpublishAt={scheduleUnpublishAt}
+            onPublishAtChange={setSchedulePublishAt}
+            onUnpublishAtChange={setScheduleUnpublishAt}
+          />
         </div>
 
         <DialogFooter>
@@ -294,12 +283,9 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
               Unpublish
             </Button>
           ) : (
-            <Button
-              onClick={handlePublish}
-              disabled={loading || (publishTarget === 'custom' && !domainId)}
-            >
+            <Button onClick={handlePublish} disabled={publishDisabled}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Publish to {publishTarget === 'demo' ? 'demo' : 'domain'}
+              Publish to {targetLabel}
             </Button>
           )}
         </DialogFooter>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api, type Domain } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -252,7 +253,7 @@ export function DomainsFeature() {
           </DialogHeader>
           <form onSubmit={handleAddDomain} className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Hostname</label>
+              <Label>Hostname</Label>
               <Input
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
@@ -389,7 +390,7 @@ export function DomainsFeature() {
               )}
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Embed policy</label>
+                <Label>Embed policy</Label>
                 <Select value={embedPolicy || '__default__'} onValueChange={(v) => setEmbedPolicy(v === '__default__' ? '' : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Default" />

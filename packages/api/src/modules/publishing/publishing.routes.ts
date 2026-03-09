@@ -1,6 +1,6 @@
 /**
- * Publishing routes: publish, unpublish, publish-status.
- * Mounted under /api/v1/pages (routes are /:id/publish, /:id/unpublish, /:id/publish-status).
+ * Publishing routes: publish, unpublish, schedule, publish-status.
+ * Mounted under /api/v1/pages (routes are /:id/publish, /:id/unpublish, etc.).
  */
 
 import { Router, Request, Response } from 'express';
@@ -11,12 +11,20 @@ import {
   publishPage,
   unpublishPage,
   getPublishStatus,
+  schedulePage,
   processScheduledPublish,
+  checkAllSchedules,
 } from './publishing.service.js';
 import type { PublishConfig } from './publishing.types.js';
 import { PublishTargetType, PublishStatus } from './publishing.types.js';
 
 export const publishingRouter = Router();
+
+const VALID_TARGET_TYPES: string[] = [
+  PublishTargetType.Demo,
+  PublishTargetType.Custom,
+  PublishTargetType.WebflowSubdomain,
+];
 
 const readMiddleware = [requireAuth, requireWorkspace];
 const writeMiddleware = [requireAuth, requireWorkspace, requireMinRole('Editor')];
@@ -26,13 +34,16 @@ async function maybeProcessSchedule(pageId: string): Promise<void> {
   await processScheduledPublish(pageId);
 }
 
+/**
+ * POST /:id/publish - Publish a page to demo, custom domain, or Webflow subdomain.
+ */
 publishingRouter.post('/:id/publish', ...writeMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
   const { id } = req.params;
-  const { targetType, domainId, path } = req.body;
+  const { targetType, domainId, path, webflowIntegrationId, webflowSubdomain } = req.body;
 
-  if (!targetType || !['demo', 'custom'].includes(targetType)) {
-    res.status(400).json({ error: 'targetType must be demo or custom' });
+  if (!targetType || !VALID_TARGET_TYPES.includes(targetType)) {
+    res.status(400).json({ error: `targetType must be one of: ${VALID_TARGET_TYPES.join(', ')}` });
     return;
   }
 
@@ -40,6 +51,8 @@ publishingRouter.post('/:id/publish', ...writeMiddleware, async (req: Request, r
     targetType: targetType as PublishTargetType,
     domainId: domainId ?? undefined,
     path: path ?? undefined,
+    webflowIntegrationId: webflowIntegrationId ?? undefined,
+    webflowSubdomain: webflowSubdomain ?? undefined,
   });
 
   if (!result.ok) {
@@ -51,6 +64,9 @@ publishingRouter.post('/:id/publish', ...writeMiddleware, async (req: Request, r
   res.json({ ok: true, publishStatus: status });
 });
 
+/**
+ * POST /:id/unpublish - Unpublish a page.
+ */
 publishingRouter.post('/:id/unpublish', ...writeMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
   const { id } = req.params;
@@ -66,6 +82,9 @@ publishingRouter.post('/:id/unpublish', ...writeMiddleware, async (req: Request,
   res.json({ ok: true, publishStatus: status });
 });
 
+/**
+ * GET /:id/publish-status - Current publish state for a page.
+ */
 publishingRouter.get('/:id/publish-status', ...readMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
   const { id } = req.params;
@@ -82,7 +101,41 @@ publishingRouter.get('/:id/publish-status', ...readMiddleware, async (req: Reque
 });
 
 /**
- * Schedule publish/unpublish. Updates publishConfig with publishAt, unpublishAt, status.
+ * POST /:id/schedule - Schedule publish and/or unpublish times.
+ * Body: { publishAt?, unpublishAt?, targetType?, domainId?, path?, webflowIntegrationId?, webflowSubdomain? }
+ */
+publishingRouter.post('/:id/schedule', ...writeMiddleware, async (req: Request, res: Response) => {
+  const workspaceId = req.session!.workspaceId!;
+  const { id } = req.params;
+  const { publishAt, unpublishAt, targetType, domainId, path, webflowIntegrationId, webflowSubdomain } = req.body;
+
+  if (!publishAt && !unpublishAt) {
+    res.status(400).json({ error: 'At least one of publishAt or unpublishAt is required' });
+    return;
+  }
+
+  const result = await schedulePage(id, workspaceId, {
+    publishAt: publishAt ?? undefined,
+    unpublishAt: unpublishAt ?? undefined,
+    targetType: targetType ?? undefined,
+    domainId: domainId ?? undefined,
+    path: path ?? undefined,
+    webflowIntegrationId: webflowIntegrationId ?? undefined,
+    webflowSubdomain: webflowSubdomain ?? undefined,
+  });
+
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  await maybeProcessSchedule(id);
+  const status = await getPublishStatus(id, workspaceId);
+  res.json({ ok: true, publishStatus: status });
+});
+
+/**
+ * PATCH /:id/publish-schedule - Update schedule (backwards-compatible endpoint).
  */
 publishingRouter.patch('/:id/publish-schedule', ...writeMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
@@ -117,4 +170,13 @@ publishingRouter.patch('/:id/publish-schedule', ...writeMiddleware, async (req: 
   await maybeProcessSchedule(id);
   const status = await getPublishStatus(id, workspaceId);
   res.json({ ok: true, publishStatus: status });
+});
+
+/**
+ * POST /check-schedules - Process all due scheduled pages.
+ * Can be called by cron or internal task runner.
+ */
+publishingRouter.post('/check-schedules', requireAuth, async (_req: Request, res: Response) => {
+  const processed = await checkAllSchedules();
+  res.json({ ok: true, processed });
 });

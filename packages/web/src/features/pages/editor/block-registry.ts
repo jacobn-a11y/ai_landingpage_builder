@@ -19,7 +19,9 @@ export const BLOCK_DEFINITIONS: BlockDefinition[] = [
   { type: 'columns', label: 'Columns', category: 'layout' },
   { type: 'stack', label: 'Stack', category: 'layout' },
   // Content
-  { type: 'text', label: 'Text', category: 'content' },
+  { type: 'headline', label: 'Headline', category: 'content' },
+  { type: 'paragraph', label: 'Paragraph', category: 'content' },
+  { type: 'text', label: 'Text (legacy)', category: 'content' },
   { type: 'image', label: 'Image', category: 'content' },
   { type: 'button', label: 'Button', category: 'content' },
   { type: 'divider', label: 'Divider', category: 'content' },
@@ -28,6 +30,8 @@ export const BLOCK_DEFINITIONS: BlockDefinition[] = [
   { type: 'shapeRectangle', label: 'Shape – Rectangle', category: 'content' },
   { type: 'shapeCircle', label: 'Shape – Circle', category: 'content' },
   { type: 'countdown', label: 'Countdown Timer', category: 'content' },
+  { type: 'accordion', label: 'Accordion', category: 'content' },
+  { type: 'carousel', label: 'Carousel / Slider', category: 'content' },
   { type: 'table', label: 'Table', category: 'content' },
   // Pattern
   { type: 'hero', label: 'Hero', category: 'pattern' },

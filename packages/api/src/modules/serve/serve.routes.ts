@@ -11,6 +11,7 @@ import { requireAuth } from '../auth/auth.middleware.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/db.js';
 import { renderContentToHtml, renderFullPageHtml, type PageContentJson, type StickyBarData, type PopupData, type FormSchemaData } from './renderer.js';
+import type { HookedFormBinding, FieldMappingEntry } from './form-interception-script.js';
 import type { RedirectRule } from '../publishing/publishing.types.js';
 import { DomainStatus } from '../domains/domains.types.js';
 import { buildCspFromAllowlist } from '../scripts/csp.js';
@@ -78,6 +79,29 @@ function getUrlParams(req: Request): Record<string, string> {
   return params;
 }
 
+async function fetchHookedFormBindings(pageId: string): Promise<HookedFormBinding[]> {
+  const bindings = await prisma.pageFormBinding.findMany({
+    where: { pageId, type: 'hooked' },
+    select: { id: true, selector: true, fieldMappings: true },
+  });
+  return bindings
+    .filter((b) => b.selector)
+    .map((b) => ({
+      id: b.id,
+      selector: b.selector!,
+      fieldMappings: Array.isArray(b.fieldMappings) ? b.fieldMappings as unknown as FieldMappingEntry[] : [],
+    }));
+}
+
+async function fetchScopedStylesheets(pageId: string): Promise<{ scopeId: string; cssText: string }[]> {
+  const sheets = await prisma.pageStylesheet.findMany({
+    where: { pageId },
+    select: { scopeId: true, cssText: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return sheets;
+}
+
 function applyRedirects(redirects: unknown, path: string): { redirect: string; status: number } | null {
   const rules = Array.isArray(redirects) ? redirects : [];
   const normalized = path.startsWith('/') ? path : `/${path}`;
@@ -128,7 +152,11 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
   securityHeaders(res, { embedPolicy: 'deny', scriptAllowlist: allowlist });
 
   const content = page.lastPublishedContentJson as PageContentJson & { pageSettings?: object; stickyBars?: StickyBarData[]; popups?: PopupData[] };
-  const formIds = extractFormIdsFromContent(content);
+  const [formIds, hookedFormBindings, scopedStylesheets] = await Promise.all([
+    Promise.resolve(extractFormIdsFromContent(content)),
+    fetchHookedFormBindings(page.id),
+    fetchScopedStylesheets(page.id),
+  ]);
   const forms = await fetchFormSchemas(formIds);
   const urlParams = getUrlParams(req);
   const contentHtml = renderContentToHtml(content, {
@@ -151,6 +179,8 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
     pageSettings: content?.pageSettings ?? null,
     stickyBars: content?.stickyBars,
     popups: content?.popups,
+    hookedFormBindings,
+    scopedStylesheets,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -216,7 +246,10 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
         });
         const notFoundContent = notFoundPage.lastPublishedContentJson as PageContentJson & { pageSettings?: object; stickyBars?: StickyBarData[]; popups?: PopupData[] };
         const notFoundFormIds = extractFormIdsFromContent(notFoundContent);
-        const notFoundForms = await fetchFormSchemas(notFoundFormIds);
+        const [notFoundForms, notFoundHookedBindings] = await Promise.all([
+          fetchFormSchemas(notFoundFormIds),
+          fetchHookedFormBindings(notFoundPage.id),
+        ]);
         const urlParams = getUrlParams(req);
         const contentHtml = renderContentToHtml(notFoundContent, {
           forms: notFoundForms,
@@ -238,6 +271,7 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
           pageSettings: notFoundContent?.pageSettings ?? null,
           stickyBars: notFoundContent?.stickyBars,
           popups: notFoundContent?.popups,
+          hookedFormBindings: notFoundHookedBindings,
         });
         res.status(404).setHeader('Content-Type', 'text/html; charset=utf-8').send(html);
         return;
@@ -265,7 +299,11 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
   });
 
   const content = page.lastPublishedContentJson as PageContentJson & { pageSettings?: object; stickyBars?: StickyBarData[]; popups?: PopupData[] };
-  const formIds = extractFormIdsFromContent(content);
+  const [formIds, hookedFormBindings, scopedStylesheets] = await Promise.all([
+    Promise.resolve(extractFormIdsFromContent(content)),
+    fetchHookedFormBindings(page.id),
+    fetchScopedStylesheets(page.id),
+  ]);
   const forms = await fetchFormSchemas(formIds);
   const urlParams = getUrlParams(req);
   const contentHtml = renderContentToHtml(content, {
@@ -288,6 +326,8 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
     pageSettings: content?.pageSettings ?? null,
     stickyBars: content?.stickyBars,
     popups: content?.popups,
+    hookedFormBindings,
+    scopedStylesheets,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -323,7 +363,11 @@ serveRouter.get('/preview/:pageId', requireAuth, async (req: Request, res: Respo
   const workspace = page.workspace;
   const allowlist = (workspace?.scriptAllowlist ?? []) as unknown as ScriptAllowlist;
   securityHeaders(res, { embedPolicy: 'deny', scriptAllowlist: allowlist });
-  const formIds = extractFormIdsFromContent(content);
+  const [formIds, hookedFormBindings, scopedStylesheets] = await Promise.all([
+    Promise.resolve(extractFormIdsFromContent(content)),
+    fetchHookedFormBindings(page.id),
+    fetchScopedStylesheets(page.id),
+  ]);
   const forms = await fetchFormSchemas(formIds);
   const urlParams = getUrlParams(req);
   const contentHtml = renderContentToHtml(content, {
@@ -346,6 +390,8 @@ serveRouter.get('/preview/:pageId', requireAuth, async (req: Request, res: Respo
     pageSettings: content?.pageSettings ?? null,
     stickyBars: content?.stickyBars,
     popups: content?.popups,
+    hookedFormBindings,
+    scopedStylesheets,
   });
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);

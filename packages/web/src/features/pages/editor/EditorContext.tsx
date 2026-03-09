@@ -28,6 +28,7 @@ import {
   BREAKPOINT_WIDTHS,
 } from './types';
 import { isContainerBlock } from './block-registry';
+import { loadGoogleFonts } from './google-fonts';
 
 function generateBlockId(): string {
   return `b_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -98,6 +99,10 @@ export interface EditorContextValue {
   updatePopup: (id: string, updates: Partial<Omit<Popup, 'root' | 'blocks'>>) => void;
   removePopup: (id: string) => void;
   updateOverlayBlocks: (type: 'stickyBar' | 'popup', id: string, root: string, blocks: Record<string, EditorBlock>) => void;
+  /** Scoped CSS from imported blocks, keyed by scopeId */
+  scopedStyles: Record<string, string>;
+  updateScopedStyle: (scopeId: string, cssText: string) => void;
+  deleteScopedStyle: (scopeId: string) => void;
 }
 
 const EditorContext = createContext<EditorContextValue | null>(null);
@@ -141,6 +146,31 @@ export function EditorProvider({
   useEffect(() => {
     setCanvasWidth(BREAKPOINT_WIDTHS[breakpoint]);
   }, [breakpoint]);
+  // Load Google Fonts used in all blocks on page load
+  useEffect(() => {
+    const fonts = new Set<string>();
+    Object.values(content.blocks).forEach((block) => {
+      const p = block.props as Record<string, unknown> | undefined;
+      if (!p) return;
+      if (typeof p.fontFamily === 'string' && p.fontFamily) fonts.add(p.fontFamily);
+      if (typeof p.titleFontFamily === 'string' && p.titleFontFamily) fonts.add(p.titleFontFamily);
+    });
+    if (fonts.size > 0) loadGoogleFonts(Array.from(fonts));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scoped CSS from imported blocks (keyed by scopeId)
+  const [scopedStyles, setScopedStyles] = useState<Record<string, string>>({});
+  const updateScopedStyle = useCallback((scopeId: string, cssText: string) => {
+    setScopedStyles((prev) => ({ ...prev, [scopeId]: cssText }));
+  }, []);
+  const deleteScopedStyle = useCallback((scopeId: string) => {
+    setScopedStyles((prev) => {
+      const next = { ...prev };
+      delete next[scopeId];
+      return next;
+    });
+  }, []);
+
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -765,26 +795,62 @@ export function EditorProvider({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable) return;
-      if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 'c') {
         e.preventDefault();
         copyBlocks();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+      } else if (mod && e.key === 'v') {
         e.preventDefault();
         pasteBlocks(content.root, undefined);
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+      } else if (mod && e.key === 'g') {
         e.preventDefault();
         groupBlocks();
+      } else if (mod && e.key === 'd') {
+        // Duplicate selected blocks
+        e.preventDefault();
+        if (selectedBlockIds.length > 0) {
+          copyBlocks();
+          pasteBlocks(content.root, undefined);
+        }
+      } else if (mod && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) undo();
+      } else if ((mod && e.key === 'z' && e.shiftKey) || (mod && e.key === 'y')) {
+        e.preventDefault();
+        if (canRedo) redo();
+      } else if (e.key === 'Escape') {
+        setSelectedBlockIds([]);
+        setSelectedBlockId(null);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedBlockIds.length > 0) {
           e.preventDefault();
           selectedBlockIds.forEach((id) => removeBlock(id));
           setSelectedBlockIds([]);
         }
+      } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        // Arrow key nudge: 1px, or 10px with Shift
+        if (selectedBlockIds.length > 0) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1;
+          selectedBlockIds.forEach((id) => {
+            const block = content.blocks[id];
+            if (!block) return;
+            const p = (block.props ?? {}) as Record<string, unknown>;
+            const x = (typeof p.x === 'number' ? p.x : 0);
+            const y = (typeof p.y === 'number' ? p.y : 0);
+            let nx = x, ny = y;
+            if (e.key === 'ArrowUp') ny = y - step;
+            else if (e.key === 'ArrowDown') ny = y + step;
+            else if (e.key === 'ArrowLeft') nx = x - step;
+            else if (e.key === 'ArrowRight') nx = x + step;
+            updateBlock(id, { props: { ...p, x: nx, y: ny } });
+          });
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copyBlocks, pasteBlocks, groupBlocks, removeBlock, selectedBlockIds, content.root]);
+  }, [copyBlocks, pasteBlocks, groupBlocks, removeBlock, selectedBlockIds, content, undo, redo, canUndo, canRedo, setSelectedBlockIds, setSelectedBlockId, updateBlock]);
 
   const value: EditorContextValue = useMemo(
     () => ({
@@ -838,6 +904,9 @@ export function EditorProvider({
       updatePopup,
       removePopup,
       updateOverlayBlocks,
+      scopedStyles,
+      updateScopedStyle,
+      deleteScopedStyle,
     }),
     [
       pageId,
@@ -885,6 +954,9 @@ export function EditorProvider({
       addPopup,
       updatePopup,
       updateOverlayBlocks,
+      scopedStyles,
+      updateScopedStyle,
+      deleteScopedStyle,
     ]
   );
 

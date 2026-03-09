@@ -11,6 +11,8 @@ const UTM_TTL_DAYS = 30;
 /**
  * Inline UTM capture script: reads ?utm_source= etc from URL, saves to cookie and localStorage.
  * Runs on page load. Cookie has 30-day TTL for cross-page persistence.
+ * Auto-derives utm_page from the page slug provided in __REPLICA_PAGE__.
+ * Exposes captured UTM data as window.__REPLICA_UTM__ for form interception.
  */
 export function getUtmCaptureScript(): string {
   return `
@@ -22,12 +24,22 @@ export function getUtmCaptureScript(): string {
     var m = q.match(new RegExp('[?&]' + p + '=([^&]*)'));
     if (m) utm[p] = decodeURIComponent(m[1].replace(/\\+/g,' '));
   });
-  if (Object.keys(utm).length === 0) return;
-  var json = JSON.stringify(utm);
-  try { localStorage.setItem('${UTM_STORAGE_KEY}', json); } catch(e){}
-  var exp = new Date();
-  exp.setDate(exp.getDate() + ${UTM_TTL_DAYS});
-  document.cookie = '${UTM_COOKIE_NAME}=' + encodeURIComponent(json) + ';path=/;max-age=' + (${UTM_TTL_DAYS}*24*60*60) + ';SameSite=Lax';
+  var cfg = window.__REPLICA_PAGE__ || {};
+  var pageSlug = cfg.pageSlug || cfg.pageName || '';
+  if (pageSlug) utm.utm_page = pageSlug;
+  var hasUtmParams = params.some(function(p){ return !!utm[p]; });
+  if (!hasUtmParams && !pageSlug) return;
+  if (hasUtmParams) {
+    var json = JSON.stringify(utm);
+    try { localStorage.setItem('${UTM_STORAGE_KEY}', json); } catch(e){}
+    document.cookie = '${UTM_COOKIE_NAME}=' + encodeURIComponent(json) + ';path=/;max-age=' + (${UTM_TTL_DAYS}*24*60*60) + ';SameSite=Lax';
+  } else {
+    try {
+      var stored = localStorage.getItem('${UTM_STORAGE_KEY}');
+      if (stored) { utm = JSON.parse(stored); utm.utm_page = pageSlug; }
+    } catch(e){}
+  }
+  window.__REPLICA_UTM__ = utm;
 })();
 `;
 }

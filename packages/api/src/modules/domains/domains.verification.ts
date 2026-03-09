@@ -1,6 +1,6 @@
 import dns from 'node:dns';
 
-const { resolveTxt, resolveCname, resolveNs } = dns.promises;
+const { resolveTxt, resolveCname, resolve4 } = dns.promises;
 
 const CNAME_TARGET = process.env.CNAME_TARGET ?? 'cname.replicapages.io';
 
@@ -18,7 +18,7 @@ export interface VerificationResult {
   error?: string;
   txtOk: boolean;
   cnameOk: boolean;
-  isCloudflare?: boolean;
+  hasConflictingA: boolean;
 }
 
 export async function verifyDomain(
@@ -28,13 +28,15 @@ export async function verifyDomain(
   const txtName = getVerificationTxtName(hostname);
   let txtOk = false;
   let cnameOk = false;
-  let isCloudflare = false;
+  let hasConflictingA = false;
 
   // 1. Check TXT record
   try {
     const txtRecords = await resolveTxt(txtName);
     const flattened = txtRecords.flat();
-    txtOk = flattened.some((v) => v === expectedTxtValue || v === `"${expectedTxtValue}"`);
+    txtOk = flattened.some(
+      (v) => v === expectedTxtValue || v === `"${expectedTxtValue}"`
+    );
   } catch {
     txtOk = false;
   }
@@ -48,29 +50,21 @@ export async function verifyDomain(
     const normalized = cnameRecords.map((c) =>
       c.endsWith('.') ? c.slice(0, -1) : c
     );
-    cnameOk = normalized.some((c) => c.toLowerCase() === target.toLowerCase());
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === 'ENODATA' || code === 'ENOTFOUND') {
-      cnameOk = false;
-    } else {
-      cnameOk = false;
-    }
-  }
-
-  // 3. Conflict detection: we cannot reliably distinguish A vs CNAME via standard resolve;
-  // show generic CNAME/A conflict warning in UI when displaying records.
-
-  // 4. Cloudflare detection: check NS records for hostname's zone
-  try {
-    const parts = hostname.split('.');
-    const zone = parts.length >= 2 ? parts.slice(-2).join('.') : hostname;
-    const nsRecords = await resolveNs(zone);
-    isCloudflare = nsRecords.some(
-      (ns) => ns.toLowerCase().includes('cloudflare')
+    cnameOk = normalized.some(
+      (c) => c.toLowerCase() === target.toLowerCase()
     );
   } catch {
-    // Can't determine, assume false
+    cnameOk = false;
+  }
+
+  // 3. Conflict detection: check for A records that block CNAME
+  if (!cnameOk) {
+    try {
+      const aRecords = await resolve4(hostname);
+      hasConflictingA = aRecords.length > 0;
+    } catch {
+      hasConflictingA = false;
+    }
   }
 
   const success = txtOk && cnameOk;
@@ -78,10 +72,14 @@ export async function verifyDomain(
   const errors: string[] = [];
   if (!txtOk) {
     errors.push(
-      `TXT record missing or incorrect: add _replica-verify.${hostname} = "${expectedTxtValue}"`
+      `TXT record missing or incorrect: add ${txtName} = "${expectedTxtValue}"`
     );
   }
-  if (!cnameOk) {
+  if (hasConflictingA) {
+    errors.push(
+      `A record detected on ${hostname} — remove it before adding a CNAME`
+    );
+  } else if (!cnameOk) {
     errors.push(
       `CNAME record missing or incorrect: add ${hostname} -> ${CNAME_TARGET}`
     );
@@ -93,6 +91,6 @@ export async function verifyDomain(
     error: errors.length ? errors.join('; ') : undefined,
     txtOk,
     cnameOk,
-    isCloudflare,
+    hasConflictingA,
   };
 }

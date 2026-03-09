@@ -31,6 +31,11 @@ export function validateEnv(): void {
     warnings.push('ENCRYPTION_KEY should be 64 hex characters (256-bit key)');
   }
 
+  // MHTML import storage paths
+  if (!process.env.ASSET_STORAGE_PATH) {
+    warnings.push('ASSET_STORAGE_PATH not set — defaulting to ./data/assets');
+  }
+
   for (const w of warnings) {
     console.warn(`[env] WARNING: ${w}`);
   }

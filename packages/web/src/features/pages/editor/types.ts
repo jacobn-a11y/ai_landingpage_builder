@@ -31,7 +31,18 @@ export type LayoutMode = 'fluid' | 'canvas';
 
 export interface PageSettings {
   backgroundColor?: string;
+  backgroundImage?: string;
+  backgroundSize?: string;
   fontFamily?: string;
+  headlineFontFamily?: string;
+  headlineFontWeight?: string;
+  paragraphFontFamily?: string;
+  paragraphFontWeight?: string;
+  buttonFontFamily?: string;
+  buttonFontWeight?: string;
+  customCss?: string;
+  bodyClassName?: string;
+  faviconUrl?: string;
   seoMetaDescription?: string;
   seoOgTitle?: string;
   seoOgImage?: string;

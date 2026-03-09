@@ -3,7 +3,12 @@ import rateLimit from 'express-rate-limit';
 import { prisma } from '../../shared/db.js';
 import { requireAuth, requireMinRole } from '../auth/auth.middleware.js';
 import { requireWorkspace } from '../workspace/workspace.middleware.js';
-import { validateAndNormalizePayload } from './submissions.service.js';
+import {
+  validateAndNormalizePayload,
+  listSubmissions,
+  getSubmission,
+  exportToCsv,
+} from './submissions.service.js';
 
 export const submissionsRouter = Router();
 
@@ -78,23 +83,43 @@ submissionsRouter.post('/', postRateLimiter, async (req: Request, res: Response)
   }
 });
 
+// GET /api/v1/submissions/export/csv - CSV download (must be above /:id)
+submissionsRouter.get('/export/csv', ...readMiddleware, async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.session!.workspaceId!;
+    const pageId = req.query.pageId as string | undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+
+    const csv = await exportToCsv({ workspaceId, pageId, from, to });
+
+    const filename = `submissions-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('[submissions] CSV export error:', err);
+    res.status(500).json({ error: 'Failed to export submissions' });
+  }
+});
+
 // GET /api/v1/submissions - list (authenticated, Editor+)
 submissionsRouter.get('/', ...readMiddleware, async (req: Request, res: Response) => {
   try {
     const workspaceId = req.session!.workspaceId!;
     const pageId = req.query.pageId as string | undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 50;
 
-    const where: { workspaceId: string; pageId?: string } = { workspaceId };
-    if (pageId) where.pageId = pageId;
-
-    const submissions = await prisma.submission.findMany({
-      where,
-      include: { page: { select: { id: true, name: true, slug: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+    const result = await listSubmissions({ workspaceId, pageId, from, to, page, limit });
+    res.json({
+      submissions: result.submissions,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
     });
-
-    res.json({ submissions });
   } catch (err) {
     console.error('[submissions] GET list error:', err);
     res.status(500).json({ error: 'Failed to load submissions' });
@@ -107,10 +132,7 @@ submissionsRouter.get('/:id', ...readMiddleware, async (req: Request, res: Respo
     const workspaceId = req.session!.workspaceId!;
     const { id } = req.params;
 
-    const submission = await prisma.submission.findFirst({
-      where: { id, workspaceId },
-      include: { page: { select: { id: true, name: true, slug: true } } },
-    });
+    const submission = await getSubmission(id, workspaceId);
 
     if (!submission) {
       res.status(404).json({ error: 'Submission not found' });

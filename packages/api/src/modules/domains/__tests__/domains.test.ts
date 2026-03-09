@@ -22,7 +22,7 @@ vi.mock('../domains.verification.js', () => ({
     success: true,
     txtOk: true,
     cnameOk: true,
-    isCloudflare: false,
+    hasConflictingA: false,
   }),
 }));
 

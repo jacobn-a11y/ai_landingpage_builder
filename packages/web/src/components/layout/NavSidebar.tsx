@@ -11,7 +11,9 @@ import {
   Users,
   Settings,
   LogOut,
+  Layers,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 
 const navItems = [
@@ -30,8 +32,11 @@ export function NavSidebar() {
   const { isAdmin, user, logout } = useAuth();
   return (
     <aside className="flex w-56 flex-col border-r bg-muted/30 min-h-screen">
-      <div className="flex h-14 items-center border-b px-4">
-        <span className="font-semibold">Replica Pages</span>
+      <div className="flex h-14 items-center gap-2 border-b px-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <Layers className="h-4 w-4" />
+        </div>
+        <span className="font-semibold tracking-tight">Replica Pages</span>
       </div>
       <nav className="flex flex-col gap-1 p-2">
         {navItems
@@ -58,13 +63,14 @@ export function NavSidebar() {
         <div className="mb-2 px-3 py-1 text-xs text-muted-foreground truncate" title={user?.email}>
           {user?.email}
         </div>
-        <button
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
           onClick={logout}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           Sign out
-        </button>
+        </Button>
       </div>
     </aside>
   );

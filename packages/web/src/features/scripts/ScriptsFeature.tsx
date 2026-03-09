@@ -21,63 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2 } from 'lucide-react';
-
-function extractDomainsFromScript(script: string): string[] {
-  const domains: string[] = [];
-  const urlRegex = /(?:src|href)=["']([^"']+)["']/gi;
-  const scriptRegex = /(?:https?:)?\/\/[^\s"'<>]+/gi;
-  let m: RegExpExecArray | null;
-  while ((m = urlRegex.exec(script)) !== null) {
-    try {
-      const u = new URL(m[1], 'https://example.com');
-      if (u.origin !== 'https://example.com') {
-        const host = u.hostname;
-        if (host && !domains.includes(host)) domains.push(host);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  const fullScript = script;
-  const urlMatches = fullScript.match(scriptRegex) ?? [];
-  for (const match of urlMatches) {
-    try {
-      const url = match.startsWith('http') ? match : `https://${match.replace(/^\/+/, '')}`;
-      const u = new URL(url);
-      const host = u.hostname;
-      if (host && host !== 'example.com' && !domains.includes(host)) {
-        domains.push(host);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return domains;
-}
-
-function DomainWarning({
-  script,
-  allowlist,
-}: {
-  script: string;
-  allowlist: ScriptAllowlistEntry[];
-}) {
-  if (!script?.trim()) return null;
-  const domains = extractDomainsFromScript(script);
-  const allowlistDomains = new Set(
-    allowlist.map((e) => e.domain.replace(/^https?:\/\//, '').toLowerCase())
-  );
-  const missing = domains.filter(
-    (d) => !allowlistDomains.has(d.toLowerCase())
-  );
-  if (missing.length === 0) return null;
-  return (
-    <p className="mt-1 text-sm text-amber-600 dark:text-amber-500">
-      Domain must be in allowlist: {missing.join(', ')}
-    </p>
-  );
-}
+import { Plus, Trash2, Shield } from 'lucide-react';
+import { DomainWarning, buildCspPreview } from './script-allowlist-utils';
 
 export function ScriptsFeature() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -261,6 +206,24 @@ export function ScriptsFeature() {
               Add domain
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            CSP preview
+          </CardTitle>
+          <CardDescription>
+            Content-Security-Policy header derived from your allowlist. A per-request nonce is added
+            at serve time for inline scripts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs text-muted-foreground">
+            {buildCspPreview(scriptAllowlist)}
+          </pre>
         </CardContent>
       </Card>
 

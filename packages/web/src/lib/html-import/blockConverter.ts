@@ -10,218 +10,219 @@ import {
   looksLikeButton,
   isSectionLike,
 } from './htmlParser';
+import {
+  generateId,
+  getElementHtml,
+  serializeElement,
+  extractInlineStyles,
+  getInnerHtml,
+  hasInlineFormatting,
+  isComplexHtml,
+  resolveImageSrc,
+} from './blockConverterUtils';
 
 interface ConvertResult {
   block: BaseBlock;
   nested?: ConvertResult[];
 }
 
-function generateId(): string {
-  return `block-${Math.random().toString(36).slice(2, 11)}`;
+interface ConvertOptions {
+  baseUrl: string;
 }
 
-function getElementHtml(el: Element): string {
-  return el.outerHTML;
-}
+const SKIP_TAGS = new Set(['script', 'style', 'noscript', 'link', 'meta']);
+const CONTAINER_TAGS = new Set(['div', 'article', 'aside', 'header', 'footer', 'main', 'nav']);
 
-function serializeElement(el: Element): string {
-  const div = el.ownerDocument.createElement('div');
-  div.appendChild(el.cloneNode(true));
-  return div.innerHTML;
-}
-
-/**
- * Check if element should be treated as Custom HTML (tables, complex layouts).
- */
-function isComplexHtml(el: Element): boolean {
-  const tag = el.tagName.toLowerCase();
-  return tag === 'table' || tag === 'iframe' || tag === 'video' || tag === 'audio';
+/** Shorthand: wrap raw HTML in a customHtml block. */
+function customHtmlBlock(id: string, html: string): ConvertResult {
+  return { block: { id, type: 'customHtml', props: { html } } };
 }
 
 /**
  * Convert a single DOM element to a block.
- * Returns null if the element should be skipped (e.g. script, style).
+ * Returns null if the element should be skipped (script, style, etc.).
  */
-function elementToBlock(
-  el: Element,
-  doc: Document,
-  baseUrl: string
-): ConvertResult | null {
+function elementToBlock(el: Element, opts: ConvertOptions): ConvertResult | null {
   const tag = el.tagName.toLowerCase();
-
-  if (tag === 'script' || tag === 'style' || tag === 'noscript') {
-    return null;
-  }
+  if (SKIP_TAGS.has(tag)) return null;
 
   const id = generateId();
+  const inlineStyles = extractInlineStyles(el);
 
-  if (tag === 'form') {
-    return {
-      block: {
-        id,
-        type: 'customHtml',
-        props: { html: getElementHtml(el) },
-      },
-    };
+  // Forms and complex elements: preserve intact as customHtml
+  if (tag === 'form' || isComplexHtml(el)) {
+    return customHtmlBlock(id, getElementHtml(el));
   }
 
-  if (isComplexHtml(el)) {
-    return {
-      block: {
-        id,
-        type: 'customHtml',
-        props: { html: getElementHtml(el) },
-      },
-    };
-  }
-
-  if (tag.match(/^h[1-6]$/)) {
+  // Headings h1-h6 -> headline block type
+  if (/^h[1-6]$/.test(tag)) {
     const level = parseInt(tag[1], 10) as 1 | 2 | 3 | 4 | 5 | 6;
+    const content = hasInlineFormatting(el) ? getInnerHtml(el) : getTextContent(el);
+    const props: Record<string, unknown> = { text: content, level };
+    if (inlineStyles) props.style = inlineStyles;
     return {
-      block: {
-        id,
-        type: 'text',
-        props: { text: getTextContent(el), tag: `h${level}` },
-      },
+      block: { id, type: 'headline', props },
     };
   }
 
+  // Paragraphs -> paragraph block type
   if (tag === 'p') {
+    const content = hasInlineFormatting(el) ? getInnerHtml(el) : getTextContent(el);
+    if (!content) return null;
+    const props: Record<string, unknown> = { text: content };
+    if (inlineStyles) props.style = inlineStyles;
     return {
-      block: {
-        id,
-        type: 'text',
-        props: { text: getTextContent(el), tag: 'p' },
-      },
+      block: { id, type: 'paragraph', props },
     };
   }
 
+  // Lists -> customHtml (preserve structure)
+  if (tag === 'ul' || tag === 'ol') {
+    return customHtmlBlock(id, getElementHtml(el));
+  }
+
+  // Images
   if (tag === 'img') {
     const src = el.getAttribute('src') ?? '';
     const alt = el.getAttribute('alt') ?? '';
-    let resolvedSrc = src;
-    if (src && baseUrl && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('/')) {
-      try {
-        resolvedSrc = new URL(src, baseUrl).href;
-      } catch {
-        // keep original if URL resolution fails
-      }
-    }
+    const resolvedSrc = resolveImageSrc(src, opts.baseUrl);
+    const props: Record<string, unknown> = { src: resolvedSrc, alt };
+    if (inlineStyles) props.style = inlineStyles;
     return {
-      block: {
-        id,
-        type: 'image',
-        props: { src: resolvedSrc, alt },
-      },
+      block: { id, type: 'image', props },
     };
   }
 
+  // Picture element -> extract img inside
+  if (tag === 'picture') {
+    const img = el.querySelector('img');
+    if (img) return elementToBlock(img, opts);
+    return null;
+  }
+
+  // Button-like anchors
   if (tag === 'a' && looksLikeButton(el)) {
     const href = el.getAttribute('href') ?? '#';
+    const props: Record<string, unknown> = { text: getTextContent(el), href };
+    if (inlineStyles) props.style = inlineStyles;
+    return {
+      block: { id, type: 'button', props },
+    };
+  }
+
+  // Standalone anchor (not button-like) -> paragraph with link
+  if (tag === 'a') {
+    const href = el.getAttribute('href') ?? '#';
+    const text = getTextContent(el);
+    if (!text) return null;
     return {
       block: {
         id,
-        type: 'button',
-        props: { text: getTextContent(el), href },
+        type: 'paragraph',
+        props: { text: `<a href="${href}">${text}</a>` },
       },
     };
   }
 
+  // Horizontal rule
   if (tag === 'hr') {
-    return {
-      block: {
-        id,
-        type: 'divider',
-      },
-    };
+    return { block: { id, type: 'divider' } };
   }
 
+  // Section-like containers
   if (isSectionLike(el)) {
-    const nested = processChildElements(el, doc, baseUrl);
+    const nested = processChildElements(el, opts);
+    if (nested.length === 0) return null;
+    const props: Record<string, unknown> = {};
+    if (inlineStyles) props.style = inlineStyles;
     return {
       block: {
         id,
         type: 'section',
         children: nested.map((c) => c.block.id),
+        ...(Object.keys(props).length > 0 ? { props } : {}),
       },
       nested,
     };
   }
 
-  if (tag === 'div' || tag === 'article' || tag === 'aside' || tag === 'header' || tag === 'footer') {
-    const directContent = getDirectContent(el);
-    if (directContent.length === 0) {
-      const nested = processChildElements(el, doc, baseUrl);
-      if (nested.length === 0) return null;
-      if (nested.length === 1 && !nested[0].nested?.length) {
-        return nested[0];
-      }
-      return {
-        block: {
-          id,
-          type: 'section',
-          children: nested.map((c) => c.block.id),
-        },
-        nested,
-      };
-    }
-    const hasOnlyMappable = directContent.every((c) => {
-      const t = c.tagName.toLowerCase();
-      return t.match(/^h[1-6]$/) || t === 'p' || t === 'img' || t === 'a' || t === 'form';
-    });
-    if (hasOnlyMappable && directContent.length > 0) {
-      const nested = processChildElements(el, doc, baseUrl);
-      return {
-        block: {
-          id,
-          type: 'section',
-          children: nested.map((c) => c.block.id),
-        },
-        nested,
-      };
-    }
+  // Generic containers: div, article, aside, header, footer, main, nav
+  if (CONTAINER_TAGS.has(tag)) {
+    return convertContainer(el, id, opts, inlineStyles);
+  }
+
+  // Span with only text -> paragraph
+  if (tag === 'span') {
+    const text = getTextContent(el);
+    if (!text) return null;
+    const props: Record<string, unknown> = { text };
+    if (inlineStyles) props.style = inlineStyles;
     return {
-      block: {
-        id,
-        type: 'customHtml',
-        props: { html: serializeElement(el) },
-      },
+      block: { id, type: 'paragraph', props },
     };
   }
 
+  // Fallback: customHtml for anything else
+  return customHtmlBlock(id, serializeElement(el));
+}
+
+/**
+ * Convert a container element (div, article, etc.) to blocks.
+ * Recurses into children if they are mappable, otherwise falls back to customHtml.
+ */
+function convertContainer(
+  el: Element,
+  id: string,
+  opts: ConvertOptions,
+  inlineStyles: Record<string, string> | undefined
+): ConvertResult | null {
+  const children = getDirectContent(el);
+
+  // Empty container with no text content -> skip
+  if (children.length === 0 && !getTextContent(el)) return null;
+
+  // Container with only text (no child elements) -> paragraph
+  if (children.length === 0 && getTextContent(el)) {
+    const content = hasInlineFormatting(el) ? getInnerHtml(el) : getTextContent(el);
+    const props: Record<string, unknown> = { text: content };
+    if (inlineStyles) props.style = inlineStyles;
+    return {
+      block: { id, type: 'paragraph', props },
+    };
+  }
+
+  // Try to recurse into children
+  const nested = processChildElements(el, opts);
+  if (nested.length === 0) return null;
+
+  // Single child: unwrap unless the container has meaningful styles
+  if (nested.length === 1 && !nested[0].nested?.length && !inlineStyles) {
+    return nested[0];
+  }
+
+  // Wrap children in a section
+  const props: Record<string, unknown> = {};
+  if (inlineStyles) props.style = inlineStyles;
   return {
     block: {
       id,
-      type: 'customHtml',
-      props: { html: serializeElement(el) },
+      type: 'section',
+      children: nested.map((c) => c.block.id),
+      ...(Object.keys(props).length > 0 ? { props } : {}),
     },
+    nested,
   };
 }
 
 function getDirectContent(el: Element): Element[] {
-  const result: Element[] = [];
-  for (const child of el.children) {
-    if (child.tagName.toLowerCase() !== 'script' && child.tagName.toLowerCase() !== 'style') {
-      result.push(child);
-    }
-  }
-  return result;
+  return Array.from(el.children).filter((c) => !SKIP_TAGS.has(c.tagName.toLowerCase()));
 }
 
-function processChildElements(
-  parent: Element,
-  doc: Document,
-  baseUrl: string
-): ConvertResult[] {
+function processChildElements(parent: Element, opts: ConvertOptions): ConvertResult[] {
   const result: ConvertResult[] = [];
-  for (const child of parent.children) {
-    if (child.tagName.toLowerCase() === 'script' || child.tagName.toLowerCase() === 'style') {
-      continue;
-    }
-    const converted = elementToBlock(child, doc, baseUrl);
-    if (converted) {
-      result.push(converted);
-    }
+  for (const child of getDirectContent(parent)) {
+    const converted = elementToBlock(child, opts);
+    if (converted) result.push(converted);
   }
   return result;
 }
@@ -250,7 +251,9 @@ export function htmlToBlocks(html: string, baseUrl = ''): PageContentJson {
     return { root: '', blocks: {} };
   }
 
-  const childBlocks = processChildElements(root, doc, baseUrl);
+  const opts: ConvertOptions = { baseUrl };
+  const childBlocks = processChildElements(root, opts);
+
   if (childBlocks.length === 0) {
     const fallbackId = generateId();
     return {
@@ -275,8 +278,5 @@ export function htmlToBlocks(html: string, baseUrl = ''): PageContentJson {
   };
   allBlocks[rootId] = rootSection;
 
-  return {
-    root: rootId,
-    blocks: allBlocks,
-  };
+  return { root: rootId, blocks: allBlocks };
 }

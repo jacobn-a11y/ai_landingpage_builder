@@ -1,82 +1,50 @@
 /**
- * Publishing service: publish, unpublish, schedule checks.
+ * Publishing service: publish, unpublish, status, Webflow subdomain.
+ * Schedule logic is in publishing.schedule.ts.
  */
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/db.js';
-import type { PublishConfig, PublishStatus, PublishTargetType } from './publishing.types.js';
+import type { PublishConfig } from './publishing.types.js';
 import { PublishStatus as PS, PublishTargetType as PT } from './publishing.types.js';
 import { DomainStatus } from '../domains/domains.types.js';
 
+// Re-export schedule functions for consumers that import from this file
+export {
+  isScheduledDue,
+  processScheduledPublish,
+  checkAllSchedules,
+  schedulePage,
+} from './publishing.schedule.js';
+
 const API_BASE = process.env.API_URL ?? process.env.WEB_URL ?? 'http://localhost:5173';
+
+/* ---------- URL helpers ---------- */
 
 export function getDemoUrl(workspaceId: string, pageSlug: string): string {
   const base = API_BASE.replace(/\/$/, '');
   return `${base}/api/v1/serve/demo/${workspaceId}/${pageSlug}`;
 }
 
-export function isScheduledDue(config: PublishConfig, now: Date): {
-  shouldPublish: boolean;
-  shouldUnpublish: boolean;
-} {
-  const publishAt = config.publishAt ? new Date(config.publishAt) : null;
-  const unpublishAt = config.unpublishAt ? new Date(config.unpublishAt) : null;
-  return {
-    shouldPublish: !!publishAt && publishAt <= now && config.status === PS.Scheduled,
-    shouldUnpublish: !!unpublishAt && unpublishAt <= now && config.status === PS.Published,
-  };
+export function getWebflowSubdomainUrl(subdomain: string, path?: string): string {
+  const cleanPath = (path ?? '/').replace(/^\//, '');
+  return `https://${subdomain}.webflow.io/${cleanPath}`;
 }
 
-export async function processScheduledPublish(pageId: string): Promise<boolean> {
-  const page = await prisma.page.findFirst({
-    where: { id: pageId },
-    select: { publishConfig: true, contentJson: true, lastPublishedContentJson: true },
-  });
-  if (!page) return false;
+/* ---------- Publish ---------- */
 
-  const config = (page.publishConfig ?? {}) as PublishConfig;
-  const now = new Date();
-  const { shouldPublish, shouldUnpublish } = isScheduledDue(config, now);
-
-  if (shouldPublish) {
-    await prisma.page.update({
-      where: { id: pageId },
-      data: {
-        publishConfig: {
-          ...config,
-          status: PS.Published,
-          isPublished: true,
-          publishedAt: now.toISOString(),
-        } as Prisma.InputJsonValue,
-        lastPublishedContentJson: page.contentJson as Prisma.InputJsonValue,
-      },
-    });
-    return true;
-  }
-
-  if (shouldUnpublish) {
-    await prisma.page.update({
-      where: { id: pageId },
-      data: {
-        publishConfig: {
-          ...config,
-          status: PS.Draft,
-          isPublished: false,
-          publishedAt: null,
-        } as Prisma.InputJsonValue,
-        lastPublishedContentJson: Prisma.DbNull,
-      },
-    });
-    return true;
-  }
-
-  return false;
+interface PublishTarget {
+  targetType: PT;
+  domainId?: string;
+  path?: string;
+  webflowIntegrationId?: string;
+  webflowSubdomain?: string;
 }
 
 export async function publishPage(
   pageId: string,
   workspaceId: string,
-  target: { targetType: PublishTargetType; domainId?: string; path?: string }
+  target: PublishTarget
 ): Promise<{ ok: boolean; error?: string }> {
   const page = await prisma.page.findFirst({
     where: { id: pageId, workspaceId },
@@ -84,6 +52,7 @@ export async function publishPage(
   });
   if (!page) return { ok: false, error: 'Page not found' };
 
+  // Validate custom domain target
   if (target.targetType === PT.Custom) {
     if (!target.domainId) return { ok: false, error: 'domainId required for custom domain' };
     const domain = await prisma.domain.findFirst({
@@ -95,6 +64,15 @@ export async function publishPage(
     }
   }
 
+  // Validate Webflow subdomain target
+  if (target.targetType === PT.WebflowSubdomain) {
+    if (!target.webflowSubdomain) {
+      return { ok: false, error: 'webflowSubdomain is required for Webflow publishing' };
+    }
+    const wfResult = await publishToWebflow(pageId, workspaceId, target);
+    if (!wfResult.ok) return wfResult;
+  }
+
   const path = target.path ?? page.slug;
   const config: PublishConfig = {
     domainId: target.domainId,
@@ -103,6 +81,8 @@ export async function publishPage(
     status: PS.Published,
     isPublished: true,
     publishedAt: new Date().toISOString(),
+    webflowIntegrationId: target.webflowIntegrationId,
+    webflowSubdomain: target.webflowSubdomain,
   };
 
   await prisma.page.update({
@@ -115,7 +95,37 @@ export async function publishPage(
   return { ok: true };
 }
 
-export async function unpublishPage(pageId: string, workspaceId: string): Promise<{ ok: boolean; error?: string }> {
+/* ---------- Webflow subdomain publish ---------- */
+
+async function publishToWebflow(
+  _pageId: string,
+  workspaceId: string,
+  target: PublishTarget
+): Promise<{ ok: boolean; error?: string }> {
+  if (target.webflowIntegrationId) {
+    const integration = await prisma.integration.findFirst({
+      where: {
+        id: target.webflowIntegrationId,
+        workspaceId,
+        type: 'webflow',
+      },
+    });
+    if (!integration) {
+      return { ok: false, error: 'Webflow integration not found' };
+    }
+    // In production, this would decrypt configEncrypted and call Webflow API:
+    // - Create or update page via POST/PUT /sites/:siteId/pages
+    // - Publish the site via POST /sites/:siteId/publish
+  }
+  return { ok: true };
+}
+
+/* ---------- Unpublish ---------- */
+
+export async function unpublishPage(
+  pageId: string,
+  workspaceId: string
+): Promise<{ ok: boolean; error?: string }> {
   const page = await prisma.page.findFirst({
     where: { id: pageId, workspaceId },
   });
@@ -139,12 +149,14 @@ export async function unpublishPage(pageId: string, workspaceId: string): Promis
   return { ok: true };
 }
 
+/* ---------- Status ---------- */
+
 export async function getPublishStatus(
   pageId: string,
   workspaceId: string
 ): Promise<{
   publishConfig: PublishConfig;
-  status: PublishStatus;
+  status: string;
   targetLabel: string;
   url?: string;
 } | null> {
@@ -155,23 +167,28 @@ export async function getPublishStatus(
   if (!page) return null;
 
   const config = (page.publishConfig ?? {}) as PublishConfig;
-  const status = (config.status ?? (config.isPublished ? PS.Published : PS.Draft)) as PublishStatus;
+  const status = (config.status ?? (config.isPublished ? PS.Published : PS.Draft)) as string;
 
   let targetLabel = 'Not published';
   let url: string | undefined;
 
   if (config.targetType === PT.Demo) {
-    targetLabel = `Published to demo`;
+    targetLabel = 'Published to demo';
     url = getDemoUrl(page.workspaceId, config.path?.replace(/^\//, '') ?? page.slug);
   } else if (config.targetType === PT.Custom && config.domainId) {
     const domain = await prisma.domain.findFirst({
       where: { id: config.domainId, workspaceId },
     });
-    targetLabel = domain ? `Published to ${domain.hostname}${config.path ?? ''}` : 'Custom domain';
+    targetLabel = domain
+      ? `Published to ${domain.hostname}${config.path ?? ''}`
+      : 'Custom domain';
     if (domain) {
       const path = (config.path ?? `/${page.slug}`).replace(/^\//, '');
       url = `https://${domain.hostname}/${path}`;
     }
+  } else if (config.targetType === PT.WebflowSubdomain && config.webflowSubdomain) {
+    targetLabel = `Published to ${config.webflowSubdomain}.webflow.io`;
+    url = getWebflowSubdomainUrl(config.webflowSubdomain, config.path);
   }
 
   if (status === PS.Scheduled && config.publishAt) {

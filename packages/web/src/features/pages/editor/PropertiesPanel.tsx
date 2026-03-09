@@ -5,6 +5,7 @@
 import { useEditor } from './EditorContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -325,7 +326,7 @@ export function PropertiesPanel() {
               <Label className="text-xs">Header row</Label>
             </div>
             <Label className="text-xs">Table data (JSON)</Label>
-            <textarea
+            <Textarea
               value={JSON.stringify((props.rows as string[][]) ?? [['H1', 'H2'], ['C1', 'C2']], null, 2)}
               onChange={(e) => {
                 try {
@@ -335,7 +336,7 @@ export function PropertiesPanel() {
                   // invalid json, ignore
                 }
               }}
-              className="w-full min-h-[80px] p-2 text-sm font-mono border rounded bg-background"
+              className="min-h-[80px] font-mono text-sm"
             />
           </div>
         )}
@@ -356,11 +357,11 @@ export function PropertiesPanel() {
         {block.type === 'customHtml' && (
           <div className="space-y-2">
             <Label htmlFor="prop-html" className="text-xs">HTML</Label>
-            <textarea
+            <Textarea
               id="prop-html"
               value={(props.html as string) ?? ''}
               onChange={(e) => handlePropChange('html', e.target.value)}
-              className="w-full min-h-[80px] p-2 text-sm font-mono border rounded bg-background"
+              className="min-h-[80px] font-mono text-sm"
               placeholder="<div>...</div>"
             />
           </div>

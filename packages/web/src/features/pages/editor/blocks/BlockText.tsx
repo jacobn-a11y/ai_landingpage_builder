@@ -1,14 +1,15 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, createElement } from 'react';
 import { useEditor } from '../EditorContext';
 import { cn } from '@/lib/utils';
 import { RichTextToolbar } from '../RichTextToolbar';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 
-function RichTextContent({ html, className }: { html: string; className?: string }) {
+function RichTextContent({ html, className, style }: { html: string; className?: string; style?: React.CSSProperties }) {
   const safe = sanitizeHtml(html);
   return (
     <div
       className={cn('prose prose-sm max-w-none', className)}
+      style={style}
       dangerouslySetInnerHTML={{ __html: safe }}
     />
   );
@@ -18,6 +19,17 @@ interface BlockTextProps {
   id: string;
   content?: string;
   contentHtml?: string;
+  headingLevel?: string;
+  // Typography
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
+  textColor?: string;
+  textAlign?: string;
+  textTransform?: string;
+  linkColor?: string;
   editMode: boolean;
   className?: string;
 }
@@ -26,6 +38,16 @@ export function BlockText({
   id,
   content = '',
   contentHtml,
+  headingLevel,
+  fontFamily,
+  fontSize,
+  fontWeight,
+  lineHeight,
+  letterSpacing,
+  textColor,
+  textAlign,
+  textTransform,
+  linkColor,
   editMode,
   className,
 }: BlockTextProps) {
@@ -37,6 +59,24 @@ export function BlockText({
 
   const displayContent = contentHtml ?? content;
   const isRich = rich || (displayContent && /<[a-z][\s\S]*>/i.test(displayContent));
+
+  const textStyle: React.CSSProperties = {
+    ...(fontFamily ? { fontFamily } : {}),
+    ...(fontSize ? { fontSize } : {}),
+    ...(fontWeight ? { fontWeight } : {}),
+    ...(lineHeight ? { lineHeight } : {}),
+    ...(letterSpacing ? { letterSpacing } : {}),
+    ...(textColor ? { color: textColor } : {}),
+    ...(textAlign ? { textAlign: textAlign as React.CSSProperties['textAlign'] } : {}),
+    ...(textTransform ? { textTransform: textTransform as React.CSSProperties['textTransform'] } : {}),
+  };
+
+  // Inject link color via CSS custom property
+  if (linkColor) {
+    (textStyle as Record<string, string>)['--link-color'] = linkColor;
+  }
+
+  const tag = headingLevel && headingLevel !== 'p' ? headingLevel : undefined;
 
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
     const html = e.currentTarget.innerHTML;
@@ -76,6 +116,7 @@ export function BlockText({
           selected && 'border-primary ring-1 ring-primary/30',
           className
         )}
+        style={textStyle}
         onClick={(e) => {
           e.stopPropagation();
           handleBlockClick(id, e);
@@ -106,12 +147,17 @@ export function BlockText({
 
   if (isRich && displayContent) {
     return (
-      <RichTextContent className={className} html={displayContent} />
+      <RichTextContent className={className} html={displayContent} style={textStyle} />
     );
   }
 
+  // Render as heading tag if specified
+  if (tag) {
+    return createElement(tag, { className: cn('', className), style: textStyle }, content || 'Text');
+  }
+
   return (
-    <p className={cn('', className)}>
+    <p className={cn('', className)} style={textStyle}>
       {content || 'Text'}
     </p>
   );

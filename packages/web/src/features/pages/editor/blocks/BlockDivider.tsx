@@ -6,13 +6,33 @@ type DividerOrientation = 'horizontal' | 'vertical';
 interface BlockDividerProps {
   id: string;
   orientation?: DividerOrientation;
+  lineColor?: string;
+  lineThickness?: number;
+  lineStyle?: string;
+  lineWidth?: string;
   editMode: boolean;
   className?: string;
 }
 
-export function BlockDivider({ id, orientation = 'horizontal', editMode, className }: BlockDividerProps) {
+export function BlockDivider({ id, orientation = 'horizontal', lineColor, lineThickness = 1, lineStyle = 'solid', lineWidth = '100%', editMode, className }: BlockDividerProps) {
   const { handleBlockClick, selectedBlockIds } = useEditor();
   const selected = selectedBlockIds.includes(id);
+
+  const hrStyle: React.CSSProperties = orientation === 'horizontal'
+    ? {
+        borderTop: `${lineThickness}px ${lineStyle} ${lineColor || 'currentColor'}`,
+        borderBottom: 'none',
+        borderLeft: 'none',
+        borderRight: 'none',
+        width: lineWidth,
+      }
+    : {
+        borderLeft: `${lineThickness}px ${lineStyle} ${lineColor || 'currentColor'}`,
+        borderTop: 'none',
+        borderBottom: 'none',
+        borderRight: 'none',
+        minHeight: 24,
+      };
 
   if (editMode) {
     return (
@@ -29,9 +49,9 @@ export function BlockDivider({ id, orientation = 'horizontal', editMode, classNa
         }}
       >
         {orientation === 'vertical' ? (
-          <div className="h-full min-h-[24px] w-px bg-border" />
+          <div style={hrStyle} />
         ) : (
-          <hr className="w-full border-border" />
+          <hr style={hrStyle} />
         )}
       </div>
     );
@@ -39,9 +59,9 @@ export function BlockDivider({ id, orientation = 'horizontal', editMode, classNa
 
   return orientation === 'vertical' ? (
     <div className={cn('flex items-center justify-center min-h-[24px]', className)}>
-      <div className="h-full min-h-[24px] w-px bg-border" />
+      <div style={hrStyle} />
     </div>
   ) : (
-    <hr className={cn('border-border', className)} />
+    <hr className={className} style={hrStyle} />
   );
 }

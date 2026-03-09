@@ -140,12 +140,42 @@ export function UploadPageModal({
   const [folderId, setFolderId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importJobId, setImportJobId] = useState<string | null>(null);
+  const [importStage, setImportStage] = useState<string | null>(null);
+  const [mhtmlFile, setMhtmlFile] = useState<File | null>(null);
 
   const flatFolders = flattenFolders(folders);
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
       setError(null);
+      const arr = Array.from(files);
+      const firstFile = arr[0];
+
+      // Check if MHTML — route to server-side pipeline, but also parse client-side for form detection
+      if (firstFile && (firstFile.name.toLowerCase().endsWith('.mhtml') || firstFile.name.toLowerCase().endsWith('.mht'))) {
+        setMhtmlFile(firstFile);
+        const pageName = firstFile.name.replace(/\.mhtml?$/i, '');
+        if (!name) setName(pageName || 'Imported page');
+        if (!slug) setSlug(slugify(pageName || 'imported-page'));
+
+        // Client-side parse for preview: extract HTML, detect forms and count blocks
+        try {
+          const htmlContent = await extractHtmlFromFiles(files);
+          if (htmlContent) {
+            const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+            const blocks = htmlToBlocks(htmlContent, baseUrl);
+            setContentJson(blocks);
+            const forms = detectFormsFromHtml(htmlContent);
+            setDetectedForms(forms);
+          }
+        } catch {
+          // Non-fatal: server-side pipeline will handle the actual import
+        }
+        return;
+      }
+
+      // HTML files — use existing client-side path
       const htmlContent = await extractHtmlFromFiles(files);
       if (!htmlContent) {
         setError('No HTML found. Use .html, .htm, .mhtml, .txt, Chrome formats, or any file containing HTML (e.g. from chatbots, Figma).');
@@ -183,17 +213,74 @@ export function UploadPageModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contentJson || !name.trim()) return;
+    if ((!contentJson && !mhtmlFile) || !name.trim()) return;
     setError(null);
     setLoading(true);
+
     try {
+      // MHTML: server-side import pipeline
+      if (mhtmlFile) {
+        setImportStage('Uploading...');
+        const { jobId, status } = await api.import.mhtml(mhtmlFile, {
+          name: name.trim(),
+          slug: slug.trim() || slugify(name),
+          folderId: folderId || undefined,
+        });
+        setImportJobId(jobId);
+
+        // Poll for completion
+        const stages = ['Extracting resources...', 'Analyzing layout...', 'Creating blocks...', 'Validating fidelity...', 'Creating page...'];
+        let stageIdx = 0;
+
+        const pollResult = await new Promise<{ pageId?: string; error?: string }>((resolve) => {
+          const interval = setInterval(async () => {
+            try {
+              const job = await api.import.status(jobId);
+              setImportStage(job.stage || stages[Math.min(stageIdx++, stages.length - 1)]);
+
+              if (job.status === 'complete' && job.resultPageId) {
+                clearInterval(interval);
+                resolve({ pageId: job.resultPageId });
+              } else if (job.status === 'failed') {
+                clearInterval(interval);
+                resolve({ error: job.errorMessage || 'Import failed' });
+              }
+            } catch {
+              clearInterval(interval);
+              resolve({ error: 'Failed to check import status' });
+            }
+          }, 2000);
+
+          // Timeout after 5 minutes
+          setTimeout(() => {
+            clearInterval(interval);
+            resolve({ error: 'Import timed out' });
+          }, 300000);
+        });
+
+        if (pollResult.error) {
+          setError(pollResult.error);
+          return;
+        }
+
+        onOpenChange(false);
+        const hasForms = detectedForms.length > 0;
+        if (hasForms && onFormMapping && pollResult.pageId) {
+          onFormMapping(pollResult.pageId, true);
+        } else {
+          navigate(`/pages/${pollResult.pageId}/edit`);
+        }
+        return;
+      }
+
+      // HTML: existing client-side path
       const { page } = await api.pages.create({
         name: name.trim(),
         slug: slug.trim() || slugify(name),
         folderId: folderId || undefined,
-        contentJson,
+        contentJson: contentJson!,
       });
-      await api.library.importFromPage(name.trim(), contentJson);
+      await api.library.importFromPage(name.trim(), contentJson!);
       onOpenChange(false);
       const hasForms = detectedForms.length > 0;
       if (hasForms && onFormMapping) {
@@ -205,6 +292,8 @@ export function UploadPageModal({
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setLoading(false);
+      setImportJobId(null);
+      setImportStage(null);
     }
   };
 
@@ -215,6 +304,9 @@ export function UploadPageModal({
     setSlug('');
     setFolderId('');
     setError(null);
+    setImportJobId(null);
+    setImportStage(null);
+    setMhtmlFile(null);
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -224,6 +316,7 @@ export function UploadPageModal({
 
   const blockCount = contentJson ? Object.keys(contentJson.blocks ?? {}).length : 0;
   const formCount = detectedForms.length;
+  const hasContent = contentJson || mhtmlFile;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -282,13 +375,20 @@ export function UploadPageModal({
             </p>
           </div>
 
-          {contentJson && (
+          {hasContent && (
             <>
               <div className="flex gap-2">
-                <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
-                  <FileText className="h-3 w-3" />
-                  {blockCount} block{blockCount !== 1 ? 's' : ''}
-                </span>
+                {mhtmlFile ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
+                    <FileText className="h-3 w-3" />
+                    MHTML file ({(mhtmlFile.size / 1024 / 1024).toFixed(1)}MB)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
+                    <FileText className="h-3 w-3" />
+                    {blockCount} block{blockCount !== 1 ? 's' : ''}
+                  </span>
+                )}
                 {formCount > 0 && (
                   <span className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs">
                     {formCount} form{formCount !== 1 ? 's' : ''} detected
@@ -341,11 +441,11 @@ export function UploadPageModal({
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !contentJson}>
+            <Button type="submit" disabled={loading || !hasContent}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Uploading...
+                  {importStage || 'Uploading...'}
                 </>
               ) : (
                 'Upload & open editor'

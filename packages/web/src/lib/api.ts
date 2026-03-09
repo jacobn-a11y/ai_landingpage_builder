@@ -19,6 +19,27 @@ async function fetchApi<T>(
   return res.json();
 }
 
+/**
+ * Upload multipart form data (no Content-Type header — browser sets boundary).
+ */
+async function fetchApiFormData<T>(
+  path: string,
+  formData: FormData,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    ...options,
+    credentials: 'include',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error ?? 'Request failed');
+  }
+  return res.json();
+}
+
 export const api = {
   auth: {
     me: () => fetchApi<{ user: AuthUser | null }>('/auth/me'),
@@ -158,11 +179,40 @@ export const api = {
       fetchApi<{ ok: boolean }>(`/domains/${id}`, { method: 'DELETE' }),
   },
   submissions: {
-    list: (pageId?: string) =>
-      fetchApi<{ submissions: Submission[] }>(
-        pageId ? `/submissions?pageId=${pageId}` : '/submissions'
-      ),
+    list: (pageId?: string, opts?: { page?: number; limit?: number; from?: string; to?: string }) => {
+      const params = new URLSearchParams();
+      if (pageId) params.set('pageId', pageId);
+      if (opts?.page) params.set('page', String(opts.page));
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      const qs = params.toString();
+      return fetchApi<{ submissions: Submission[]; total: number; page: number; limit: number }>(
+        `/submissions${qs ? `?${qs}` : ''}`
+      );
+    },
     get: (id: string) => fetchApi<{ submission: Submission }>(`/submissions/${id}`),
+    exportCsv: async (opts?: { pageId?: string; from?: string; to?: string }) => {
+      const params = new URLSearchParams();
+      if (opts?.pageId) params.set('pageId', opts.pageId);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      const qs = params.toString();
+      const res = await fetch(`${API_BASE}/submissions/export/csv${qs ? `?${qs}` : ''}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error((err as { error?: string }).error ?? 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `submissions-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   },
   integrations: {
     list: () => fetchApi<{ integrations: IntegrationListItem[] }>('/integrations'),
@@ -183,6 +233,26 @@ export const api = {
       fetchApi<{ ok: boolean; message?: string }>(`/integrations/${id}/test`, {
         method: 'POST',
       }),
+  },
+  import: {
+    mhtml: (
+      file: File,
+      opts?: { name?: string; slug?: string; folderId?: string; retainSource?: boolean; force?: boolean; includeDebugBundle?: boolean },
+    ): Promise<ImportJobResponse> => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (opts?.name) fd.append('name', opts.name);
+      if (opts?.slug) fd.append('slug', opts.slug);
+      if (opts?.folderId) fd.append('folderId', opts.folderId);
+      if (opts?.retainSource) fd.append('retainSource', 'true');
+      if (opts?.force) fd.append('force', 'true');
+      if (opts?.includeDebugBundle) fd.append('includeDebugBundle', 'true');
+      return fetchApiFormData<ImportJobResponse>('/import/mhtml', fd);
+    },
+    status: (jobId: string) =>
+      fetchApi<ImportJobStatus>(`/import/jobs/${jobId}`),
+    cancel: (jobId: string) =>
+      fetchApi<{ jobId: string; status: string }>(`/import/jobs/${jobId}`, { method: 'DELETE' }),
   },
   library: {
     listFolders: () =>
@@ -390,6 +460,26 @@ export type BlockLibraryItem = {
   type: 'element' | 'block';
   blockJson: object;
   createdAt: string;
+};
+
+export type ImportJobResponse = {
+  jobId: string;
+  status: string;
+};
+
+export type ImportJobStatus = {
+  jobId: string;
+  status: string;
+  stage?: string | null;
+  resultPageId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  stats?: Record<string, unknown> | null;
+  timings?: Record<string, number> | null;
+  sourceRetained?: boolean;
+  schemaVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type BlockLibraryFolder = {
