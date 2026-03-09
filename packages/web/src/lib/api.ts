@@ -267,6 +267,24 @@ export const api = {
     deleteItem: (id: string) =>
       fetchApi<{ ok: boolean }>(`/library/items/${id}`, { method: 'DELETE' }),
   },
+  ai: {
+    chat: (params: {
+      pageId: string;
+      conversationId: string;
+      message: string;
+      selectedBlockId?: string;
+      signal?: AbortSignal;
+    }): Promise<Response> => {
+      const { signal, ...body } = params;
+      return fetch(`${API_BASE}/ai/chat`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      });
+    },
+  },
   folders: {
     list: () => fetchApi<{ folders: FolderNode[] }>('/folders'),
     create: (data: { name: string; parentId?: string }) =>
