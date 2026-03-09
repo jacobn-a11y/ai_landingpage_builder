@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { Page } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,13 @@ import {
   Tablet,
   Smartphone,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { PublishDialog } from './PublishDialog';
+import { AIChatPanel } from '@/features/ai/AIChatPanel';
+import { executeMutations } from '@/features/ai/mutation-executor';
+import type { EditorMutation } from '@/features/ai/stores/chat-store';
+import { useToast } from '@/contexts/ToastContext';
 import { EditorProvider } from './editor/EditorContext';
 import { EditorCanvas } from './editor/EditorCanvas';
 import { BlockToolbar } from './editor/BlockToolbar';
@@ -32,7 +37,7 @@ function SaveIndicator() {
   return null;
 }
 
-function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPublishChange?: () => void }) {
+function EditorToolbar({ onBack, onPublishChange, aiOpen, onToggleAI }: { onBack: () => void; onPublishChange?: () => void; aiOpen: boolean; onToggleAI: () => void }) {
   const [publishOpen, setPublishOpen] = useState(false);
   const {
     page,
@@ -115,6 +120,20 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
 
         <div className="w-px h-5 bg-border mx-1" />
 
+        {/* AI Assistant */}
+        <Button
+          variant={aiOpen ? 'secondary' : 'ghost'}
+          size="sm"
+          className={`h-7 ${!aiOpen ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 hover:text-white' : ''}`}
+          onClick={onToggleAI}
+          title="AI Assistant"
+        >
+          <Sparkles className="h-3.5 w-3.5 mr-1" />
+          AI
+        </Button>
+
+        <div className="w-px h-5 bg-border mx-1" />
+
         {/* Publish */}
         <Button size="sm" className="h-7" onClick={() => setPublishOpen(true)}>
           <Send className="h-3.5 w-3.5 mr-1" />
@@ -134,11 +153,36 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
 }
 
 function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPublishChange?: () => void }) {
-  const { previewMode } = useEditor();
+  const { previewMode, pageId, selectedBlockId, content, setContent } = useEditor();
+  const { showSuccess, showError } = useToast();
+  const [aiOpen, setAiOpen] = useState(false);
+
+  const selectedBlockType = selectedBlockId
+    ? content.blocks[selectedBlockId]?.type ?? null
+    : null;
+
+  const handleApplyMutations = useCallback(
+    (mutations: EditorMutation[]) => {
+      const { content: newContent, report } = executeMutations(mutations, content);
+      setContent(newContent);
+      if (report.applied > 0) {
+        showSuccess(`Applied ${report.applied} change${report.applied > 1 ? 's' : ''}`);
+      }
+      if (report.errors.length > 0) {
+        showError(`${report.errors.length} change${report.errors.length > 1 ? 's' : ''} failed: ${report.errors[0]}`);
+      }
+    },
+    [content, setContent, showSuccess, showError]
+  );
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] -m-6">
-      <EditorToolbar onBack={onBack} onPublishChange={onPublishChange} />
+      <EditorToolbar
+        onBack={onBack}
+        onPublishChange={onPublishChange}
+        aiOpen={aiOpen}
+        onToggleAI={() => setAiOpen((v) => !v)}
+      />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left sidebar: block toolbar (hidden in preview) */}
@@ -155,6 +199,16 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
           {!previewMode && <PropertiesPanel />}
         </div>
       </div>
+
+      {/* AI Chat Panel */}
+      <AIChatPanel
+        isOpen={aiOpen}
+        onClose={() => setAiOpen(false)}
+        pageId={pageId}
+        selectedBlockId={selectedBlockId}
+        selectedBlockType={selectedBlockType}
+        onApplyMutations={handleApplyMutations}
+      />
     </div>
   );
 }

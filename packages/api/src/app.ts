@@ -20,6 +20,7 @@ import { serveRouter } from './modules/serve/serve.routes.js';
 import { libraryRouter } from './modules/library/library.routes.js';
 import { importRouter } from './modules/import/import.routes.js';
 import { assetsRouter } from './modules/assets/assets.routes.js';
+import { aiRouter } from './modules/ai/ai.routes.js';
 import { devBypassAuth } from './modules/auth/dev-bypass.js';
 import { csrfOriginCheck, csrfDoubleSubmit } from './middleware/csrf-protection.js';
 import './modules/auth/passport.config.js';
@@ -118,6 +119,7 @@ app.use('/api/v1/integrations', integrationsRouter);
 app.use('/api/v1/library', libraryRouter);
 app.use('/api/v1/import', importRouter);
 app.use('/api/v1/assets', assetsRouter);
+app.use('/api/v1/ai', aiRouter);
 
 // Global error handler — catch unhandled async errors
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

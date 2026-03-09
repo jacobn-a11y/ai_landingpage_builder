@@ -4,3 +4,5 @@
 
 export * from './block-types';
 export * from './form-types';
+export * from './schemas';
+export * from './schemas/layout-model';

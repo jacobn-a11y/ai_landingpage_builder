@@ -1,25 +1,16 @@
 /**
  * Properties panel: edit selected block props or page scripts.
+ * Uses the inspector registry to render per-block-type controls.
  */
 
 import { useEditor } from './EditorContext';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Trash2 } from 'lucide-react';
 import { PageScriptsPanel } from './PageScriptsPanel';
 import { PageSettingsPanel } from './PageSettingsPanel';
 import { OverlaysPanel } from './OverlaysPanel';
 import { UniversalPropertiesSection } from './UniversalPropertiesSection';
+import { getInspector } from './inspectors';
 
 export function PropertiesPanel() {
   const { content, selectedBlockIds, selectedBlockId, updateBlock, removeBlock, layoutMode, breakpoint, copyBlocks, pasteBlocks, groupBlocks, alignBlocks, updateBlocksZIndex } = useEditor();
@@ -67,306 +58,32 @@ export function PropertiesPanel() {
     }
   };
 
+  // Look up per-type inspector from the registry
+  const Inspector = getInspector(block.type);
+
   return (
     <div className="flex flex-col border-l bg-muted/20 min-w-[220px]">
-      <div className="p-2 border-b text-sm font-medium">Properties</div>
+      <div className="p-2 border-b text-sm font-medium flex items-center justify-between">
+        <span>Properties</span>
+        <span className="text-xs text-muted-foreground capitalize">{block.type}</span>
+      </div>
       <div className="flex-1 overflow-auto p-3 space-y-4">
-        <div className="space-y-2">
-          <Label className="text-xs">Block type</Label>
-          <div className="text-sm text-muted-foreground capitalize">
-            {block.type}
-          </div>
-        </div>
-
-        {block.type === 'text' && (
+        {/* Per-type inspector from registry */}
+        {Inspector ? (
+          <Inspector
+            blockId={selectedBlockId!}
+            block={block}
+            updateBlock={updateBlock}
+          />
+        ) : (
           <div className="space-y-2">
-            <Label htmlFor="prop-content" className="text-xs">Content (plain)</Label>
-            <Input
-              id="prop-content"
-              value={(props.content as string) ?? ''}
-              onChange={(e) => handlePropChange('content', e.target.value)}
-              className="text-sm"
-              placeholder="Use toolbar when selected for rich text"
-            />
-            <p className="text-[10px] text-muted-foreground">
-              Use {`{{param}}`} for URL params, e.g. {`{{name}}`}
-            </p>
+            <div className="text-xs text-muted-foreground">
+              No specific controls for <span className="capitalize">{block.type}</span> blocks.
+            </div>
           </div>
         )}
 
-        {block.type === 'image' && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="prop-src" className="text-xs">Image URL</Label>
-              <Input
-                id="prop-src"
-                value={(props.src as string) ?? ''}
-                onChange={(e) => handlePropChange('src', e.target.value)}
-                placeholder="https://..."
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prop-alt" className="text-xs">Alt text</Label>
-              <Input
-                id="prop-alt"
-                value={(props.alt as string) ?? ''}
-                onChange={(e) => handlePropChange('alt', e.target.value)}
-                className="text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {block.type === 'button' && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="prop-text" className="text-xs">Button text</Label>
-              <Input
-                id="prop-text"
-                value={(props.text as string) ?? 'Button'}
-                onChange={(e) => handlePropChange('text', e.target.value)}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prop-href" className="text-xs">Link URL</Label>
-              <Input
-                id="prop-href"
-                value={(props.href as string) ?? '#'}
-                onChange={(e) => handlePropChange('href', e.target.value)}
-                className="text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {block.type === 'divider' && (
-          <div className="space-y-2">
-            <Label className="text-xs">Orientation</Label>
-            <Select
-              value={(props.orientation as string) ?? 'horizontal'}
-              onValueChange={(v) => handlePropChange('orientation', v)}
-            >
-              <SelectTrigger className="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="horizontal">Horizontal</SelectItem>
-                <SelectItem value="vertical">Vertical</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {block.type === 'spacer' && (
-          <div className="space-y-2">
-            <Label htmlFor="prop-height" className="text-xs">Height (px)</Label>
-            <Input
-              id="prop-height"
-              type="number"
-              value={(props.height as number) ?? 24}
-              onChange={(e) =>
-                handlePropChange('height', parseInt(e.target.value, 10) || 24)
-              }
-              className="text-sm"
-            />
-          </div>
-        )}
-
-        {block.type === 'video' && (
-          <>
-            <div className="space-y-2">
-              <Label className="text-xs">Provider</Label>
-              <Select
-                value={(props.provider as string) ?? 'youtube'}
-                onValueChange={(v) => handlePropChange('provider', v)}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="youtube">YouTube</SelectItem>
-                  <SelectItem value="vimeo">Vimeo</SelectItem>
-                  <SelectItem value="wistia">Wistia</SelectItem>
-                  <SelectItem value="custom">Custom URL</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prop-url" className="text-xs">Video URL</Label>
-              <Input
-                id="prop-url"
-                value={(props.url as string) ?? ''}
-                onChange={(e) => handlePropChange('url', e.target.value)}
-                placeholder="https://youtube.com/watch?v=..."
-                className="text-sm"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={(props.autoplay as boolean) ?? false}
-                onCheckedChange={(v) => handlePropChange('autoplay', v)}
-              />
-              <Label className="text-xs">Autoplay</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={(props.mute as boolean) ?? false}
-                onCheckedChange={(v) => handlePropChange('mute', v)}
-              />
-              <Label className="text-xs">Mute</Label>
-            </div>
-          </>
-        )}
-
-        {block.type === 'shapeRectangle' && (
-          <>
-            <div className="space-y-2">
-              <Label className="text-xs">Width</Label>
-              <Input
-                type="number"
-                value={(props.width as number) ?? 200}
-                onChange={(e) => handlePropChange('width', parseInt(e.target.value, 10) || 200)}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Height</Label>
-              <Input
-                type="number"
-                value={(props.height as number) ?? 100}
-                onChange={(e) => handlePropChange('height', parseInt(e.target.value, 10) || 100)}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Fill color</Label>
-              <Input
-                type="text"
-                value={(props.fillColor as string) ?? '#e5e7eb'}
-                onChange={(e) => handlePropChange('fillColor', e.target.value)}
-                placeholder="#e5e7eb"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Border radius</Label>
-              <Input
-                type="number"
-                value={(props.borderRadius as number) ?? 0}
-                onChange={(e) => handlePropChange('borderRadius', parseInt(e.target.value, 10) || 0)}
-                className="text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {block.type === 'shapeCircle' && (
-          <>
-            <div className="space-y-2">
-              <Label className="text-xs">Size (px)</Label>
-              <Input
-                type="number"
-                value={(props.size as number) ?? 100}
-                onChange={(e) => handlePropChange('size', parseInt(e.target.value, 10) || 100)}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Fill color</Label>
-              <Input
-                type="text"
-                value={(props.fillColor as string) ?? '#e5e7eb'}
-                onChange={(e) => handlePropChange('fillColor', e.target.value)}
-                placeholder="#e5e7eb"
-                className="text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {block.type === 'countdown' && (
-          <>
-            <div className="space-y-2">
-              <Label className="text-xs">Target date/time</Label>
-              <Input
-                type="datetime-local"
-                value={(props.targetDate as string)?.slice(0, 16) ?? ''}
-                onChange={(e) => handlePropChange('targetDate', e.target.value ? new Date(e.target.value).toISOString() : '')}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Days label</Label>
-              <Input
-                value={(props.daysLabel as string) ?? 'Days'}
-                onChange={(e) => handlePropChange('daysLabel', e.target.value)}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Hours label</Label>
-              <Input
-                value={(props.hoursLabel as string) ?? 'Hours'}
-                onChange={(e) => handlePropChange('hoursLabel', e.target.value)}
-                className="text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {block.type === 'table' && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={(props.hasHeader as boolean) ?? true}
-                onCheckedChange={(v) => handlePropChange('hasHeader', v)}
-              />
-              <Label className="text-xs">Header row</Label>
-            </div>
-            <Label className="text-xs">Table data (JSON)</Label>
-            <Textarea
-              value={JSON.stringify((props.rows as string[][]) ?? [['H1', 'H2'], ['C1', 'C2']], null, 2)}
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value || '[]');
-                  if (Array.isArray(parsed)) handlePropChange('rows', parsed as string[][]);
-                } catch {
-                  // invalid json, ignore
-                }
-              }}
-              className="min-h-[80px] font-mono text-sm"
-            />
-          </div>
-        )}
-
-        {block.type === 'form' && (
-          <div className="space-y-2">
-            <Label htmlFor="prop-formId" className="text-xs">Form ID</Label>
-            <Input
-              id="prop-formId"
-              value={(props.formId as string) ?? ''}
-              onChange={(e) => handlePropChange('formId', e.target.value)}
-              placeholder="form-id"
-              className="text-sm"
-            />
-          </div>
-        )}
-
-        {block.type === 'customHtml' && (
-          <div className="space-y-2">
-            <Label htmlFor="prop-html" className="text-xs">HTML</Label>
-            <Textarea
-              id="prop-html"
-              value={(props.html as string) ?? ''}
-              onChange={(e) => handlePropChange('html', e.target.value)}
-              className="min-h-[80px] font-mono text-sm"
-              placeholder="<div>...</div>"
-            />
-          </div>
-        )}
-
+        {/* Universal style properties (always shown) */}
         <UniversalPropertiesSection
           props={props}
           onPropChange={(updates) => handlePropChange(updates)}
@@ -374,6 +91,7 @@ export function PropertiesPanel() {
           breakpoint={breakpoint}
         />
 
+        {/* Multi-selection actions */}
         {selectedBlockIds.length > 0 && (
           <div className="flex flex-wrap gap-1 py-2 border-t">
             <Button variant="outline" size="sm" onClick={copyBlocks} title="Copy (Ctrl+C)">Copy</Button>
@@ -386,14 +104,16 @@ export function PropertiesPanel() {
                     <Button variant="outline" size="sm" onClick={() => alignBlocks('left')}>Align L</Button>
                     <Button variant="outline" size="sm" onClick={() => alignBlocks('center')}>Align C</Button>
                     <Button variant="outline" size="sm" onClick={() => alignBlocks('right')}>Align R</Button>
-                    <Button variant="outline" size="sm" onClick={() => updateBlocksZIndex(1)}>↑</Button>
-                    <Button variant="outline" size="sm" onClick={() => updateBlocksZIndex(-1)}>↓</Button>
+                    <Button variant="outline" size="sm" onClick={() => updateBlocksZIndex(1)}>&#8593;</Button>
+                    <Button variant="outline" size="sm" onClick={() => updateBlocksZIndex(-1)}>&#8595;</Button>
                   </>
                 )}
               </>
             )}
           </div>
         )}
+
+        {/* Remove block(s) */}
         <div className="pt-4 border-t">
           <Button
             variant="outline"

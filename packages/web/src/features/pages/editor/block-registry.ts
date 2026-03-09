@@ -3,6 +3,8 @@
  */
 
 import type { BlockType } from '@replica-pages/blocks';
+import { BlockPropsSchemaMap, getDefaultProps, getEditableProps } from '@replica-pages/blocks';
+import type { z } from 'zod';
 
 export interface BlockDefinition {
   type: BlockType;
@@ -10,6 +12,18 @@ export interface BlockDefinition {
   category: 'layout' | 'content' | 'pattern' | 'form' | 'embed';
   icon?: string;
 }
+
+/**
+ * Get the Zod props schema for a block type.
+ */
+export function getBlockPropsSchema(type: BlockType): z.ZodObject<z.ZodRawShape> | undefined {
+  return BlockPropsSchemaMap[type];
+}
+
+/**
+ * Get default props for a new block of the given type.
+ */
+export { getDefaultProps, getEditableProps };
 
 export const BLOCK_DEFINITIONS: BlockDefinition[] = [
   // Layout
