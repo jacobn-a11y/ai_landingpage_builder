@@ -8,6 +8,8 @@ import {
   getCnameTarget,
   verifyDomain,
 } from './domains.verification.js';
+import type { SecurityHeaders } from './domains.types.js';
+import { VALID_X_FRAME_OPTIONS } from './domains.types.js';
 
 export const domainsRouter = Router();
 
@@ -119,7 +121,7 @@ domainsRouter.post('/:id/verify', ...domainMiddleware, async (req: Request, res:
       success: result.success,
       txtOk: result.txtOk,
       cnameOk: result.cnameOk,
-      isCloudflare: result.isCloudflare,
+      hasConflictingA: result.hasConflictingA,
     },
   });
 });
@@ -127,7 +129,7 @@ domainsRouter.post('/:id/verify', ...domainMiddleware, async (req: Request, res:
 domainsRouter.patch('/:id', ...domainMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
   const { id } = req.params;
-  const { status, verificationTxt, verificationCheckedAt, verificationError, cnameTarget, sslStatus, embedPolicy, custom404PageId, redirects } =
+  const { status, verificationTxt, verificationCheckedAt, verificationError, cnameTarget, sslStatus, embedPolicy, custom404PageId, securityHeaders, redirects } =
     req.body;
 
   const domain = await prisma.domain.findFirst({
@@ -166,6 +168,20 @@ domainsRouter.patch('/:id', ...domainMiddleware, async (req: Request, res: Respo
     }
     updates.custom404PageId = custom404PageId;
   }
+  if (securityHeaders !== undefined) {
+    if (securityHeaders !== null && typeof securityHeaders !== 'object') {
+      res.status(400).json({ error: 'securityHeaders must be object or null' });
+      return;
+    }
+    if (securityHeaders) {
+      const sh = securityHeaders as SecurityHeaders;
+      if (sh.xFrameOptions !== undefined && !(VALID_X_FRAME_OPTIONS as readonly (string | null)[]).includes(sh.xFrameOptions ?? null)) {
+        res.status(400).json({ error: 'xFrameOptions must be DENY, SAMEORIGIN, or null' });
+        return;
+      }
+    }
+    updates.securityHeaders = securityHeaders;
+  }
   if (redirects !== undefined) {
     if (!Array.isArray(redirects)) {
       res.status(400).json({ error: 'redirects must be array of { from, to, status }' });
@@ -178,6 +194,52 @@ domainsRouter.patch('/:id', ...domainMiddleware, async (req: Request, res: Respo
     where: { id },
     data: updates,
   });
+  res.json({ domain: updated });
+});
+
+domainsRouter.put('/:id', ...domainMiddleware, async (req: Request, res: Response) => {
+  const workspaceId = req.session!.workspaceId!;
+  const { id } = req.params;
+  const { embedPolicy, custom404PageId, securityHeaders } = req.body;
+
+  const domain = await prisma.domain.findFirst({ where: { id, workspaceId } });
+  if (!domain) {
+    res.status(404).json({ error: 'Domain not found' });
+    return;
+  }
+
+  const updates: Record<string, unknown> = {};
+
+  if (embedPolicy !== undefined) {
+    if (embedPolicy !== 'allow' && embedPolicy !== 'deny' && embedPolicy !== null) {
+      res.status(400).json({ error: 'embedPolicy must be allow, deny, or null' });
+      return;
+    }
+    updates.embedPolicy = embedPolicy;
+  }
+  if (custom404PageId !== undefined) {
+    if (custom404PageId !== null && typeof custom404PageId !== 'string') {
+      res.status(400).json({ error: 'custom404PageId must be string or null' });
+      return;
+    }
+    updates.custom404PageId = custom404PageId;
+  }
+  if (securityHeaders !== undefined) {
+    if (securityHeaders !== null && typeof securityHeaders !== 'object') {
+      res.status(400).json({ error: 'securityHeaders must be object or null' });
+      return;
+    }
+    if (securityHeaders) {
+      const sh = securityHeaders as SecurityHeaders;
+      if (sh.xFrameOptions !== undefined && !(VALID_X_FRAME_OPTIONS as readonly (string | null)[]).includes(sh.xFrameOptions ?? null)) {
+        res.status(400).json({ error: 'xFrameOptions must be DENY, SAMEORIGIN, or null' });
+        return;
+      }
+    }
+    updates.securityHeaders = securityHeaders;
+  }
+
+  const updated = await prisma.domain.update({ where: { id }, data: updates });
   res.json({ domain: updated });
 });
 

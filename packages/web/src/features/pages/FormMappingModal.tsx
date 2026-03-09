@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   type Page,
   type DetectedForm,
+  type DetectedFormField,
   type PageFormBinding,
 } from '@/lib/api';
 import {
@@ -23,6 +24,9 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+
+/* ── Canonical fields ── */
 
 const CANONICAL_FIELDS = [
   { value: '__skip__', label: '— Skip —' },
@@ -32,7 +36,48 @@ const CANONICAL_FIELDS = [
   { value: 'phone', label: 'Phone' },
   { value: 'company', label: 'Company' },
   { value: 'title', label: 'Title' },
+  { value: 'custom', label: 'Custom field' },
 ];
+
+/* ── Heuristic auto-mapping ── */
+
+const HEURISTIC_MAP: Record<string, string> = {
+  email: 'email',
+  'e-mail': 'email',
+  mail: 'email',
+  phone: 'phone',
+  tel: 'phone',
+  telephone: 'phone',
+  mobile: 'phone',
+  first_name: 'first_name',
+  firstname: 'first_name',
+  fname: 'first_name',
+  first: 'first_name',
+  last_name: 'last_name',
+  lastname: 'last_name',
+  lname: 'last_name',
+  last: 'last_name',
+  company: 'company',
+  organization: 'company',
+  org: 'company',
+  title: 'title',
+  jobtitle: 'title',
+  job_title: 'title',
+  role: 'title',
+};
+
+function guessCanonical(field: DetectedFormField): string {
+  if (field.suggestedCanonical) return field.suggestedCanonical;
+  const key = (field.name || field.id || '').toLowerCase().replace(/[-\s]/g, '_');
+  if (HEURISTIC_MAP[key]) return HEURISTIC_MAP[key];
+  const label = (field.label || '').toLowerCase().replace(/[-\s]/g, '_');
+  if (HEURISTIC_MAP[label]) return HEURISTIC_MAP[label];
+  if (field.type === 'email') return 'email';
+  if (field.type === 'tel') return 'phone';
+  return '__skip__';
+}
+
+/* ── Props ── */
 
 type FormMappingModalProps = {
   page: Page;
@@ -40,6 +85,8 @@ type FormMappingModalProps = {
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void;
 };
+
+/* ── Component ── */
 
 export function FormMappingModal({
   page,
@@ -50,34 +97,31 @@ export function FormMappingModal({
   const [forms, setForms] = useState<DetectedForm[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
+  const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
   const [successBehavior, setSuccessBehavior] = useState<string>('inline');
   const [redirectUrl, setRedirectUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /* Fetch detected forms */
   useEffect(() => {
     if (!open || !page.id) return;
     setLoading(true);
     setError(null);
+    setSaved(false);
     api.pages
       .getDetectedForms(page.id)
       .then(({ forms: f }) => {
         setForms(f);
         setSelectedIndex(0);
-        const initial: Record<string, string> = {};
-        if (f[0]) {
-          for (const field of f[0].fields) {
-            const suggested = field.suggestedCanonical;
-            if (suggested) initial[field.name] = suggested;
-          }
-        }
-        setFieldMappings(initial);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [open, page.id]);
 
+  /* Sync mappings when selected form changes */
   useEffect(() => {
     const form = forms[selectedIndex];
     if (!form) return;
@@ -86,33 +130,62 @@ export function FormMappingModal({
       next[field.name] = field.suggestedCanonical ?? '__skip__';
     }
     setFieldMappings(next);
+    setCustomLabels({});
   }, [selectedIndex, forms]);
 
-  const form = forms[selectedIndex];
+  /* Read existing publish config */
   const publishConfig = (page.publishConfig || {}) as {
     form?: { successBehavior?: string; redirectUrl?: string };
   };
-  const existingForm = publishConfig.form;
 
   useEffect(() => {
-    if (existingForm) {
-      setSuccessBehavior(existingForm.successBehavior ?? 'inline');
-      setRedirectUrl(existingForm.redirectUrl ?? '');
+    const existing = publishConfig.form;
+    if (existing) {
+      setSuccessBehavior(existing.successBehavior ?? 'inline');
+      setRedirectUrl(existing.redirectUrl ?? '');
     }
-  }, [existingForm]);
+  }, [publishConfig.form]);
 
+  /* Map All handler */
+  const handleMapAll = useCallback(() => {
+    const form = forms[selectedIndex];
+    if (!form) return;
+    const next: Record<string, string> = {};
+    for (const field of form.fields) {
+      next[field.name] = guessCanonical(field);
+    }
+    setFieldMappings(next);
+  }, [forms, selectedIndex]);
+
+  /* Count mapped fields */
+  const mappedCount = Object.values(fieldMappings).filter(
+    (v) => v && v !== '__skip__'
+  ).length;
+
+  const form = forms[selectedIndex];
+
+  /* Save handler */
   const handleSave = async () => {
     if (!form) return;
     setSaving(true);
     setError(null);
     try {
+      // Build field mappings, replacing 'custom' with custom:<label>
+      const resolvedMappings: Record<string, string> = {};
+      for (const [key, value] of Object.entries(fieldMappings)) {
+        if (!value || value === '__skip__') continue;
+        if (value === 'custom') {
+          const label = customLabels[key]?.trim();
+          resolvedMappings[key] = label ? `custom:${label}` : `custom:${key}`;
+        } else {
+          resolvedMappings[key] = value;
+        }
+      }
       const bindings: PageFormBinding[] = [
         {
           type: 'hooked',
           selector: form.selector,
-          fieldMappings: Object.fromEntries(
-            Object.entries(fieldMappings).filter(([, v]) => v && v !== '__skip__')
-          ),
+          fieldMappings: resolvedMappings,
         },
       ];
       await api.pages.update(page.id, {
@@ -125,8 +198,8 @@ export function FormMappingModal({
           },
         },
       });
+      setSaved(true);
       onSaved?.();
-      onOpenChange(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
     } finally {
@@ -134,30 +207,48 @@ export function FormMappingModal({
     }
   };
 
+  /* ── Render ── */
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Map form</DialogTitle>
+          <DialogTitle>Map form fields</DialogTitle>
           <DialogDescription>
-            Select a detected form and map its fields to the canonical schema.
+            Map detected form fields to the canonical submission schema.
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
+        {saved ? (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium">Form mapping saved</p>
+            <p className="text-xs text-muted-foreground">
+              {mappedCount} field{mappedCount !== 1 ? 's' : ''} mapped. Publish
+              the page to activate interception.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        ) : loading ? (
           <div className="flex justify-center py-8">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : forms.length === 0 ? (
           <p className="py-6 text-muted-foreground">
-            No forms detected in this page. Add a Custom HTML block with a form, or use a native form block.
+            No forms detected in this page. Add a Custom HTML block with a form,
+            or use a native form block.
           </p>
         ) : (
-          <div className="space-y-6 py-4">
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+          <div className="space-y-5 py-2">
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
+            {/* Form selector */}
             <div>
               <Label>Form</Label>
               <Select
@@ -177,47 +268,42 @@ export function FormMappingModal({
               </Select>
             </div>
 
+            {/* Field mapping table */}
             {form && (
-              <div className="space-y-3">
-                <Label>Field mapping</Label>
-                <div className="space-y-2 rounded-md border p-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>
+                    Field mapping{' '}
+                    <Badge variant="secondary" className="ml-1">
+                      {mappedCount}/{form.fields.length}
+                    </Badge>
+                  </Label>
+                  <Button variant="ghost" size="sm" onClick={handleMapAll}>
+                    Map All
+                  </Button>
+                </div>
+                <div className="max-h-60 space-y-2 overflow-y-auto rounded-md border p-3">
                   {form.fields.map((field) => (
-                    <div
+                    <FieldRow
                       key={field.name}
-                      className="flex items-center gap-2"
-                    >
-                      <span className="w-32 truncate text-sm text-muted-foreground">
-                        {field.name}
-                      </span>
-                      <span className="text-muted-foreground">→</span>
-                      <Select
-                        value={fieldMappings[field.name] ?? '__skip__'}
-                        onValueChange={(v) =>
-                          setFieldMappings((prev) => ({
-                            ...prev,
-                            [field.name]: v,
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Skip" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CANONICAL_FIELDS.map((opt) => (
-                            <SelectItem key={opt.value || 'skip'} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      field={field}
+                      mapping={fieldMappings[field.name] ?? '__skip__'}
+                      customLabel={customLabels[field.name] ?? ''}
+                      onMappingChange={(v) =>
+                        setFieldMappings((prev) => ({ ...prev, [field.name]: v }))
+                      }
+                      onCustomLabelChange={(v) =>
+                        setCustomLabels((prev) => ({ ...prev, [field.name]: v }))
+                      }
+                    />
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="space-y-3">
-              <Label>Success behavior</Label>
+            {/* Success behavior */}
+            <div className="space-y-2">
+              <Label>After submission</Label>
               <Select value={successBehavior} onValueChange={setSuccessBehavior}>
                 <SelectTrigger>
                   <SelectValue />
@@ -230,26 +316,77 @@ export function FormMappingModal({
               </Select>
               {successBehavior === 'redirect' && (
                 <Input
-                  placeholder="Redirect URL"
+                  placeholder="https://example.com/thank-you"
                   value={redirectUrl}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRedirectUrl(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setRedirectUrl(e.target.value)
+                  }
                 />
               )}
             </div>
           </div>
         )}
 
-        {forms.length > 0 && (
+        {forms.length > 0 && !saved && (
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
+            <Button onClick={handleSave} disabled={saving || mappedCount === 0}>
+              {saving ? 'Saving...' : 'Save mapping'}
             </Button>
           </DialogFooter>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ── Field row sub-component ── */
+
+function FieldRow({
+  field,
+  mapping,
+  customLabel,
+  onMappingChange,
+  onCustomLabelChange,
+}: {
+  field: DetectedFormField;
+  mapping: string;
+  customLabel: string;
+  onMappingChange: (v: string) => void;
+  onCustomLabelChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="w-32 truncate text-sm text-muted-foreground" title={field.name}>
+          {field.label || field.name}
+        </span>
+        <span className="text-xs text-muted-foreground">&#8594;</span>
+        <Select value={mapping} onValueChange={onMappingChange}>
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder="Skip" />
+          </SelectTrigger>
+          <SelectContent>
+            {CANONICAL_FIELDS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {mapping === 'custom' && (
+        <Input
+          className="ml-[calc(8rem+1.5rem)]"
+          placeholder="Custom field name"
+          value={customLabel}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            onCustomLabelChange(e.target.value)
+          }
+        />
+      )}
+    </div>
   );
 }

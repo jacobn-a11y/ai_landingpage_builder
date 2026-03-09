@@ -152,12 +152,26 @@ export function UploadPageModal({
       const arr = Array.from(files);
       const firstFile = arr[0];
 
-      // Check if MHTML — route to server-side pipeline
+      // Check if MHTML — route to server-side pipeline, but also parse client-side for form detection
       if (firstFile && (firstFile.name.toLowerCase().endsWith('.mhtml') || firstFile.name.toLowerCase().endsWith('.mht'))) {
         setMhtmlFile(firstFile);
         const pageName = firstFile.name.replace(/\.mhtml?$/i, '');
         if (!name) setName(pageName || 'Imported page');
         if (!slug) setSlug(slugify(pageName || 'imported-page'));
+
+        // Client-side parse for preview: extract HTML, detect forms and count blocks
+        try {
+          const htmlContent = await extractHtmlFromFiles(files);
+          if (htmlContent) {
+            const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+            const blocks = htmlToBlocks(htmlContent, baseUrl);
+            setContentJson(blocks);
+            const forms = detectFormsFromHtml(htmlContent);
+            setDetectedForms(forms);
+          }
+        } catch {
+          // Non-fatal: server-side pipeline will handle the actual import
+        }
         return;
       }
 
@@ -250,7 +264,12 @@ export function UploadPageModal({
         }
 
         onOpenChange(false);
-        navigate(`/pages/${pollResult.pageId}/edit`);
+        const hasForms = detectedForms.length > 0;
+        if (hasForms && onFormMapping && pollResult.pageId) {
+          onFormMapping(pollResult.pageId, true);
+        } else {
+          navigate(`/pages/${pollResult.pageId}/edit`);
+        }
         return;
       }
 

@@ -5,6 +5,7 @@
 
 import type { BaseBlock } from '@replica-pages/blocks';
 import { getUtmCaptureScript, getFormSubmitHandlerScript, getCountdownScript } from './utm-scripts.js';
+import { getFormInterceptionScript, type HookedFormBinding, type FormSuccessConfig } from './form-interception-script.js';
 import { sanitizeHtml, sanitizeCustomHtml } from '../../lib/sanitize-html.js';
 
 export interface PageContentJson {
@@ -469,6 +470,12 @@ export interface RenderPageOptions {
   stickyBars?: StickyBarData[];
   popups?: PopupData[];
   scopedStyles?: ScopedStyleData[];
+  /** Hooked form bindings for imported/external forms. */
+  hookedFormBindings?: HookedFormBinding[];
+  /** Success config for hooked form submissions. */
+  formSuccessConfig?: FormSuccessConfig | null;
+  /** Per-request nonce for inline script tags (CSP nonce). */
+  nonce?: string | null;
 }
 
 function renderOverlayContent(blocks: Record<string, BaseBlock>, rootId: string): string {
@@ -536,6 +543,21 @@ function getPopupsHtml(popups: PopupData[]): string {
 })();
 `;
   return popupMarkup + '\n<script>' + script + '</script>';
+}
+
+/** Build the <script> tag for hooked form interception (empty string if none). */
+function buildHookedFormScript(opts: RenderPageOptions): string {
+  const bindings = opts.hookedFormBindings;
+  if (!bindings || bindings.length === 0) return '';
+  const success: FormSuccessConfig = opts.formSuccessConfig ?? { behavior: 'inline' };
+  const script = getFormInterceptionScript({
+    pageId: opts.pageId,
+    pageName: opts.pageName,
+    pageSlug: opts.pageSlug,
+    bindings,
+    success,
+  });
+  return `<script>${script}</script>`;
 }
 
 export function renderFullPageHtml(opts: RenderPageOptions): string {
@@ -608,6 +630,7 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   </script>
   <script>${getFormSubmitHandlerScript()}</script>
   <script>${getCountdownScript()}</script>
+  ${buildHookedFormScript(opts)}
   ${footerScripts}
 </body>
 </html>`;

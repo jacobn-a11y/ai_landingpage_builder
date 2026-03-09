@@ -14,3 +14,10 @@ export const EmbedPolicy = {
 } as const;
 
 export type EmbedPolicy = (typeof EmbedPolicy)[keyof typeof EmbedPolicy];
+
+export interface SecurityHeaders {
+  hstsEnabled?: boolean;
+  xFrameOptions?: 'DENY' | 'SAMEORIGIN' | null;
+}
+
+export const VALID_X_FRAME_OPTIONS = ['DENY', 'SAMEORIGIN', null] as const;

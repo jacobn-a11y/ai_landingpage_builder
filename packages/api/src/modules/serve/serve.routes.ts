@@ -11,12 +11,37 @@ import { requireAuth } from '../auth/auth.middleware.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../shared/db.js';
 import { renderContentToHtml, renderFullPageHtml, type PageContentJson, type StickyBarData, type PopupData, type FormSchemaData } from './renderer.js';
+import type { HookedFormBinding, FormSuccessConfig } from './form-interception-script.js';
 import type { RedirectRule } from '../publishing/publishing.types.js';
 import { DomainStatus } from '../domains/domains.types.js';
 import { buildCspFromAllowlist } from '../scripts/csp.js';
 import type { ScriptAllowlist } from '../scripts/scripts.types.js';
 
 export const serveRouter = Router();
+
+/** Extract hooked form bindings from a page's formBindings relation. */
+function extractHookedBindings(
+  formBindings: Array<{ type: string; selector?: string | null; fieldMappings?: unknown }>
+): HookedFormBinding[] {
+  return formBindings
+    .filter((b) => b.type === 'hooked' && b.selector)
+    .map((b) => ({
+      selector: b.selector!,
+      fieldMappings: (b.fieldMappings ?? {}) as Record<string, string>,
+    }));
+}
+
+/** Extract form success config from publishConfig. */
+function extractFormSuccessConfig(publishConfig: unknown): FormSuccessConfig | null {
+  const cfg = publishConfig as { form?: { successBehavior?: string; redirectUrl?: string; message?: string } } | null;
+  const form = cfg?.form;
+  if (!form) return null;
+  return {
+    behavior: (form.successBehavior as FormSuccessConfig['behavior']) ?? 'inline',
+    redirectUrl: form.redirectUrl,
+    message: form.message,
+  };
+}
 
 function getFormActionUrl(req: Request): string {
   const host = req.get('host') || 'localhost';
