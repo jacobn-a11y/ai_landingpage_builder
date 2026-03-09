@@ -5,7 +5,7 @@ import { app } from '../../../app.js';
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     user: { findFirst: vi.fn() },
-    invite: { create: vi.fn() },
+    invite: { create: vi.fn(), findFirst: vi.fn() },
   },
 }));
 
@@ -50,5 +50,80 @@ describe('Invites POST /', () => {
     });
     expect(res.body.acceptUrl).toMatch(/^https?:\/\/.+\/accept-invite\?token=.+$/);
     expect(mockPrisma.invite.create).toHaveBeenCalled();
+  });
+});
+
+describe('Invites POST /accept', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 400 when token is missing', async () => {
+    const res = await request(app)
+      .post('/api/v1/invites/accept')
+      .send({})
+      .expect(400);
+
+    expect(res.body).toMatchObject({ error: 'Missing invite token' });
+  });
+
+  it('returns 400 when invite is not found', async () => {
+    mockPrisma.invite.findFirst.mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/v1/invites/accept')
+      .send({ token: 'invalid-token' })
+      .expect(400);
+
+    expect(res.body).toMatchObject({ error: 'Invalid invite' });
+  });
+
+  it('returns 400 when invite is expired', async () => {
+    const expiredDate = new Date();
+    expiredDate.setDate(expiredDate.getDate() - 1);
+    mockPrisma.invite.findFirst.mockResolvedValue({
+      id: 'invite-1',
+      token: 'expired-token',
+      workspaceId: 'ws-1',
+      role: 'Editor',
+      email: 'user@example.com',
+      expiresAt: expiredDate,
+      workspace: { id: 'ws-1', name: 'Test' },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/invites/accept')
+      .send({ token: 'expired-token' })
+      .expect(400);
+
+    expect(res.body).toMatchObject({ error: 'Invite expired' });
+  });
+
+  it('returns 200 with redirectUrl on valid invite', async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    mockPrisma.invite.findFirst.mockResolvedValue({
+      id: 'invite-1',
+      token: 'valid-token',
+      workspaceId: 'ws-1',
+      role: 'Editor',
+      email: 'user@example.com',
+      expiresAt: futureDate,
+      workspace: { id: 'ws-1', name: 'Test' },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/invites/accept')
+      .send({ token: 'valid-token' })
+      .expect(200);
+
+    expect(res.body).toHaveProperty('redirectUrl');
+    expect(res.body.redirectUrl).toMatch(/\/api\/v1\/auth\/google$/);
+  });
+
+  it('GET /accept returns 404 (route removed)', async () => {
+    await request(app)
+      .get('/api/v1/invites/accept?token=some-token')
+      .expect(404);
   });
 });

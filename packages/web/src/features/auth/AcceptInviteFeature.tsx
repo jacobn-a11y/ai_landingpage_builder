@@ -1,14 +1,29 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { api } from '@/lib/api';
 
 export function AcceptInviteFeature() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const acceptInvite = async (inviteToken: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { redirectUrl } = await api.invites.accept(inviteToken);
+      window.location.href = redirectUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept invite');
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
-    window.location.href = `/api/v1/invites/accept?token=${encodeURIComponent(token)}`;
+    acceptInvite(token);
   }, [token]);
 
   if (!token) {
@@ -32,14 +47,13 @@ export function AcceptInviteFeature() {
         <div className="space-y-2 text-center">
           <h1 className="text-2xl font-semibold">Accept Invite</h1>
           <p className="text-sm text-muted-foreground">
-            Redirecting to sign in with Google...
+            {error ? error : 'Redirecting to sign in with Google...'}
           </p>
         </div>
         <Button
           className="w-full"
-          onClick={() => {
-            window.location.href = `/api/v1/invites/accept?token=${encodeURIComponent(token)}`;
-          }}
+          onClick={() => acceptInvite(token)}
+          disabled={loading}
           size="lg"
         >
           Accept invite and sign in
