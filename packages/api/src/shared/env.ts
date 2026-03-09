@@ -31,6 +31,11 @@ export function validateEnv(): void {
     warnings.push('ENCRYPTION_KEY should be 64 hex characters (256-bit key)');
   }
 
+  // Anthropic API key (required for AI features)
+  if (!process.env.ANTHROPIC_API_KEY) {
+    warnings.push('ANTHROPIC_API_KEY is not set — AI chat features will not work');
+  }
+
   // MHTML import storage paths
   if (!process.env.ASSET_STORAGE_PATH) {
     warnings.push('ASSET_STORAGE_PATH not set — defaulting to ./data/assets');
