@@ -41,6 +41,8 @@ export interface PageSettings {
   buttonFontFamily?: string;
   buttonFontWeight?: string;
   customCss?: string;
+  bodyClassName?: string;
+  faviconUrl?: string;
   seoMetaDescription?: string;
   seoOgTitle?: string;
   seoOgImage?: string;

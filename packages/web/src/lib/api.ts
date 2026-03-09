@@ -118,7 +118,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data ?? {}),
       }),
-    publish: (id: string, data: { targetType: 'demo' | 'custom'; domainId?: string; path?: string }) =>
+    publish: (id: string, data: PublishRequest) =>
       fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -129,6 +129,11 @@ export const api = {
       }),
     getPublishStatus: (id: string) =>
       fetchApi<{ publishStatus: PublishStatus }>(`/pages/${id}/publish-status`),
+    schedule: (id: string, data: ScheduleRequest) =>
+      fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     updatePublishSchedule: (id: string, data: { publishAt?: string | null; unpublishAt?: string | null }) =>
       fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish-schedule`, {
         method: 'PATCH',
@@ -302,20 +307,42 @@ export type FormSchemaConfig = {
   buttonStyle?: 'primary' | 'outline' | 'secondary';
 };
 
+export type PublishTargetType = 'demo' | 'custom' | 'webflow_subdomain';
+
 export type PublishStatus = {
   publishConfig: {
     domainId?: string;
-    targetType?: 'demo' | 'custom';
+    targetType?: PublishTargetType;
     path?: string;
     status?: 'draft' | 'published' | 'scheduled';
     publishAt?: string;
     unpublishAt?: string;
     isPublished?: boolean;
     publishedAt?: string;
+    webflowIntegrationId?: string;
+    webflowSubdomain?: string;
   };
   status: 'draft' | 'published' | 'scheduled';
   targetLabel: string;
   url?: string;
+};
+
+export type PublishRequest = {
+  targetType: PublishTargetType;
+  domainId?: string;
+  path?: string;
+  webflowIntegrationId?: string;
+  webflowSubdomain?: string;
+};
+
+export type ScheduleRequest = {
+  publishAt?: string;
+  unpublishAt?: string;
+  targetType?: PublishTargetType;
+  domainId?: string;
+  path?: string;
+  webflowIntegrationId?: string;
+  webflowSubdomain?: string;
 };
 
 export type PageScripts = {

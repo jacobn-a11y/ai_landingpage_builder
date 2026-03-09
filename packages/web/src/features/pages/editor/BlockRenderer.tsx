@@ -50,12 +50,22 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
   const override = overrides?.[breakpoint];
   const props = override ? { ...baseProps, ...override } : baseProps;
   const hidden = block.meta?.hidden || (props.hidden as boolean);
-  if (hidden && editMode) return null;
+  const locked = !!block.meta?.locked;
+  // In preview mode, hidden blocks are not rendered at all
   if (hidden && !editMode) return null;
+  // In edit mode, hidden blocks render with reduced opacity so designers can see them
   const children = block.children ?? [];
   const universalStyle = hasUniversalProps(props) ? getUniversalStyleObject(props) : null;
-  const Wrapper = universalStyle
-    ? ({ children: c }: { children: React.ReactNode }) => <div style={universalStyle}>{c}</div>
+  const editWrapperStyle: React.CSSProperties = {
+    ...(universalStyle ?? {}),
+    ...(hidden && editMode ? { opacity: 0.3 } : {}),
+    ...(locked && editMode ? { pointerEvents: 'none' as const } : {}),
+  };
+  const needsWrapper = universalStyle || (editMode && (hidden || locked));
+  const Wrapper = needsWrapper
+    ? ({ children: c }: { children: React.ReactNode }) => (
+        <div style={editWrapperStyle} title={locked ? 'Locked' : undefined}>{c}</div>
+      )
     : ({ children: c }: { children: React.ReactNode }) => <>{c}</>;
 
   const common = { id: block.id, editMode, isDropTarget };

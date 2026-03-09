@@ -14,7 +14,8 @@ import {
   type FormSchemaData,
 } from './renderer.js';
 import type { RedirectRule } from '../publishing/publishing.types.js';
-import { buildCspFromAllowlist } from '../scripts/csp.js';
+import { randomBytes } from 'node:crypto';
+import { generateCspHeader } from '../scripts/csp.js';
 import type { ScriptAllowlist } from '../scripts/scripts.types.js';
 
 /* ---------- Types ---------- */
@@ -35,6 +36,8 @@ export interface ServePageContext {
   };
   embedPolicy?: 'allow' | 'deny' | null;
   req: Request;
+  /** Per-request nonce for inline scripts (CSP). */
+  nonce?: string;
 }
 
 /* ---------- Form helpers ---------- */
@@ -107,6 +110,13 @@ export function applyRedirects(
   return null;
 }
 
+/* ---------- Nonce ---------- */
+
+/** Generate a cryptographically random nonce for CSP inline scripts. */
+export function generateNonce(): string {
+  return randomBytes(16).toString('base64');
+}
+
 /* ---------- Security headers ---------- */
 
 export function setSecurityHeaders(
@@ -115,9 +125,10 @@ export function setSecurityHeaders(
     embedPolicy?: 'allow' | 'deny' | null;
     scriptAllowlist?: ScriptAllowlist | null;
     hstsEnabled?: boolean;
+    nonce?: string;
   }
 ): void {
-  const { embedPolicy, scriptAllowlist, hstsEnabled = true } = opts;
+  const { embedPolicy, scriptAllowlist, hstsEnabled = true, nonce } = opts;
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
@@ -129,8 +140,9 @@ export function setSecurityHeaders(
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
-  // CSP
-  const csp = buildCspFromAllowlist(scriptAllowlist);
+  // CSP with nonce for inline scripts
+  const cspNonce = nonce || generateNonce();
+  const csp = generateCspHeader(scriptAllowlist, cspNonce);
   if (csp) {
     res.setHeader('Content-Security-Policy', csp);
   }
@@ -173,6 +185,7 @@ export async function renderPublishedPage(ctx: ServePageContext): Promise<string
     pageSettings: content?.pageSettings ?? null,
     stickyBars: content?.stickyBars,
     popups: content?.popups,
+    nonce: ctx.nonce ?? null,
   });
 }
 
