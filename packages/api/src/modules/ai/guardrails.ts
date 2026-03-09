@@ -5,6 +5,8 @@
  * before they are applied. Rejects the entire batch if any guard fails.
  */
 
+import type { EditorMutation } from './ai.types.js';
+
 // ---------------------------------------------------------------------------
 // Types (lightweight copies to avoid cross-package import)
 // ---------------------------------------------------------------------------
@@ -21,24 +23,6 @@ export interface EditorContentJson {
   root: string;
   blocks: Record<string, EditorBlock>;
   layoutMode?: string;
-  pageSettings?: Record<string, unknown>;
-}
-
-export type EditorMutationType =
-  | 'addBlock'
-  | 'updateBlock'
-  | 'removeBlock'
-  | 'moveBlock'
-  | 'updatePageSettings';
-
-export interface EditorMutation {
-  type: EditorMutationType;
-  blockId?: string;
-  parentId?: string;
-  index?: number;
-  blockType?: string;
-  props?: Record<string, unknown>;
-  children?: string[];
   pageSettings?: Record<string, unknown>;
 }
 
@@ -61,8 +45,10 @@ const OPACITY_MIN = 0;
 const OPACITY_MAX = 100;
 const TEXT_MAX_LENGTH = 10_000;
 
-// Script injection pattern (basic but effective for user-supplied text)
+// XSS injection patterns
 const SCRIPT_PATTERN = /<script[\s>]/i;
+const EVENT_HANDLER_PATTERN = /\bon\w+\s*=\s*["']/i;
+const JAVASCRIPT_URI_PATTERN = /javascript\s*:/i;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -74,7 +60,7 @@ function countBlocksAfterMutations(
 ): number {
   let count = Object.keys(current.blocks).length;
   for (const m of mutations) {
-    if (m.type === 'addBlock') count++;
+    if (m.type === 'insertBlock') count++;
     if (m.type === 'removeBlock') count--;
   }
   return count;
@@ -105,8 +91,8 @@ function countSectionsAfterMutations(
 ): number {
   let count = Object.values(current.blocks).filter((b) => b.type === 'section').length;
   for (const m of mutations) {
-    if (m.type === 'addBlock' && m.blockType === 'section') count++;
-    if (m.type === 'removeBlock' && m.blockId) {
+    if (m.type === 'insertBlock' && m.blockType === 'section') count++;
+    if (m.type === 'removeBlock') {
       const block = current.blocks[m.blockId];
       if (block?.type === 'section') count--;
     }
@@ -172,12 +158,20 @@ function validateNesting(content: EditorContentJson): GuardrailResult | null {
   return null;
 }
 
+/** Extract props from a mutation regardless of its shape. */
+function getMutationProps(m: EditorMutation): Record<string, unknown> | undefined {
+  if (m.type === 'insertBlock' || m.type === 'updateBlockProps') return m.props;
+  if (m.type === 'replaceText') return { content: m.content };
+  return undefined;
+}
+
 function validateProps(mutations: EditorMutation[]): GuardrailResult | null {
   for (const m of mutations) {
-    if (!m.props) continue;
+    const props = getMutationProps(m);
+    if (!props) continue;
 
     // Font size
-    const fontSize = parseFontSize(m.props.fontSize);
+    const fontSize = parseFontSize(props.fontSize);
     if (fontSize !== null && (fontSize < FONT_SIZE_MIN || fontSize > FONT_SIZE_MAX)) {
       return {
         allowed: false,
@@ -187,7 +181,7 @@ function validateProps(mutations: EditorMutation[]): GuardrailResult | null {
     }
 
     // Opacity
-    const opacity = typeof m.props.opacity === 'number' ? m.props.opacity : null;
+    const opacity = typeof props.opacity === 'number' ? props.opacity : null;
     if (opacity !== null && (opacity < OPACITY_MIN || opacity > OPACITY_MAX)) {
       return {
         allowed: false,
@@ -196,12 +190,12 @@ function validateProps(mutations: EditorMutation[]): GuardrailResult | null {
       };
     }
 
-    // Text length + script injection
-    for (const [key, val] of Object.entries(m.props)) {
+    // Text length + XSS injection
+    for (const [key, val] of Object.entries(props)) {
       if (typeof val !== 'string') continue;
 
       if (
-        (key === 'text' || key === 'content' || key === 'html') &&
+        (key === 'text' || key === 'content' || key === 'html' || key === 'contentHtml') &&
         val.length > TEXT_MAX_LENGTH
       ) {
         return {
@@ -211,11 +205,28 @@ function validateProps(mutations: EditorMutation[]): GuardrailResult | null {
         };
       }
 
+      // XSS checks: <script>, event handlers (on*="..."), javascript: URIs
       if (SCRIPT_PATTERN.test(val)) {
         return {
           allowed: false,
           reason: `Potential script injection detected in "${key}".`,
           suggestion: 'Remove <script> tags from text content.',
+        };
+      }
+
+      if (EVENT_HANDLER_PATTERN.test(val)) {
+        return {
+          allowed: false,
+          reason: `Potential event handler injection detected in "${key}".`,
+          suggestion: 'Remove inline event handlers (onclick, onerror, etc.) from content.',
+        };
+      }
+
+      if (JAVASCRIPT_URI_PATTERN.test(val)) {
+        return {
+          allowed: false,
+          reason: `Potential javascript: URI detected in "${key}".`,
+          suggestion: 'Remove javascript: URIs from content.',
         };
       }
     }

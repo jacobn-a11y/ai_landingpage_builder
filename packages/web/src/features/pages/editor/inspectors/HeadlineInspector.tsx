@@ -34,8 +34,8 @@ export function HeadlineInspector({ blockId, block, updateBlock }: InspectorProp
         <div className="space-y-2">
           <Label className="text-xs">Heading level</Label>
           <select
-            value={str(props.level) || 'h2'}
-            onChange={(e) => set('level', e.target.value)}
+            value={str(props.headingLevel) || 'h2'}
+            onChange={(e) => set('headingLevel', e.target.value)}
             className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="h1">H1</option>

@@ -135,53 +135,40 @@ function executeAddSection(input: Record<string, unknown>): EditorMutation[] {
   const mutations: EditorMutation[] = [];
 
   // Apply customizations to root section block
-  if (customizations) {
-    template.rootBlock.props = { ...template.rootBlock.props, ...customizations };
-    template.allBlocks[template.rootBlock.id] = template.rootBlock;
-  }
+  const rootProps = { ...template.rootBlock.props, ...(customizations ?? {}) };
 
-  // Insert the root section block
+  // Insert the root section block (index undefined = append to end)
   mutations.push({
     type: 'insertBlock',
     parentId,
-    index: position ?? -1, // -1 signals "append"
-    block: {
-      id: template.rootBlock.id,
-      type: template.rootBlock.type,
-      props: template.rootBlock.props,
-      children: template.rootBlock.children,
-    },
+    index: position,
+    blockType: template.rootBlock.type,
+    props: rootProps,
+    blockId: template.rootBlock.id,
   });
 
-  // Insert all descendant blocks (skip the root since it's already inserted)
-  for (const [blockId, block] of Object.entries(template.allBlocks)) {
-    if (blockId === template.rootBlock.id) continue;
-
-    // Find the parent of this block
-    let blockParentId: string | undefined;
-    for (const [candidateId, candidate] of Object.entries(template.allBlocks)) {
-      if (candidate.children?.includes(blockId)) {
-        blockParentId = candidateId;
-        break;
-      }
-    }
-
-    if (blockParentId) {
-      const parent = template.allBlocks[blockParentId];
-      const idx = parent.children?.indexOf(blockId) ?? 0;
+  // Insert all descendant blocks in tree order (skip the root since it's already inserted)
+  const insertChildren = (parentBlockId: string) => {
+    const parentBlock = template.allBlocks[parentBlockId];
+    if (!parentBlock?.children) return;
+    for (let idx = 0; idx < parentBlock.children.length; idx++) {
+      const childId = parentBlock.children[idx];
+      const child = template.allBlocks[childId];
+      if (!child) continue;
       mutations.push({
         type: 'insertBlock',
-        parentId: blockParentId,
+        parentId: parentBlockId,
         index: idx,
-        block: {
-          id: block.id,
-          type: block.type,
-          props: block.props,
-          children: block.children,
-        },
+        blockType: child.type,
+        props: child.props,
+        blockId: child.id,
       });
+      // Recurse into children
+      insertChildren(childId);
     }
-  }
+  };
+
+  insertChildren(template.rootBlock.id);
 
   return mutations;
 }

@@ -353,25 +353,31 @@ export function createDocumentStore(
         pushHistory();
         const { content } = get();
         const blocks = { ...content.blocks };
-        delete blocks[id];
-        const visit = (bid: string) => {
+        // Collect all descendants BEFORE deleting anything
+        const toRemove = new Set<string>();
+        const collect = (bid: string) => {
+          toRemove.add(bid);
           const b = blocks[bid];
           if (b?.children) {
-            b.children.forEach(visit);
-            delete blocks[bid];
+            b.children.forEach(collect);
           }
         };
-        visit(id);
+        collect(id);
+        // Remove the block from any parent's children
         const updateParent = (parentId: string) => {
           const p = blocks[parentId];
           if (p?.children) {
             blocks[parentId] = {
               ...p,
-              children: p.children.filter((c: string) => c !== id && blocks[c]),
+              children: p.children.filter((c: string) => !toRemove.has(c)),
             };
           }
         };
         Object.keys(blocks).forEach(updateParent);
+        // Now delete all collected blocks
+        for (const bid of toRemove) {
+          delete blocks[bid];
+        }
         let root = content.root;
         if (root === id) {
           root = Object.keys(blocks)[0] ?? '';

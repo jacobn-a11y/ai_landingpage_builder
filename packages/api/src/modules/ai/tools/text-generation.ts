@@ -165,7 +165,12 @@ export function executeTextTool(
 
 function executeRewriteText(input: Record<string, unknown>): EditorMutation[] {
   const { blockId, newText } = input as { blockId: string; newText: string };
-  return [{ type: 'replaceText', blockId, text: newText }];
+  return [{ type: 'replaceText', blockId, content: newText }];
+}
+
+function levelToHeadingLevel(level?: number): string {
+  const n = Math.min(6, Math.max(1, level ?? 2));
+  return `h${n}`;
 }
 
 function executeGenerateHeadline(input: Record<string, unknown>): EditorMutation[] {
@@ -179,29 +184,25 @@ function executeGenerateHeadline(input: Record<string, unknown>): EditorMutation
   };
 
   if (targetBlockId) {
-    return [{ type: 'replaceText', blockId: targetBlockId, text }];
+    return [{ type: 'replaceText', blockId: targetBlockId, content: text }];
   }
 
   if (!parentId) {
     throw new Error('generate_headline requires either targetBlockId or parentId');
   }
 
-  const blockId = `headline-${Date.now().toString(36)}`;
   return [
     {
       type: 'insertBlock',
       parentId,
       index: index ?? 0,
-      block: {
-        id: blockId,
-        type: 'headline',
-        props: {
-          text,
-          level: level ?? 2,
-          fontSize: '36px',
-          fontWeight: '700',
-          ...style,
-        },
+      blockType: 'headline',
+      props: {
+        content: text,
+        headingLevel: levelToHeadingLevel(level),
+        fontSize: '36px',
+        fontWeight: '700',
+        ...style,
       },
     },
   ];
@@ -217,28 +218,24 @@ function executeGenerateParagraph(input: Record<string, unknown>): EditorMutatio
   };
 
   if (targetBlockId) {
-    return [{ type: 'replaceText', blockId: targetBlockId, text }];
+    return [{ type: 'replaceText', blockId: targetBlockId, content: text }];
   }
 
   if (!parentId) {
     throw new Error('generate_paragraph requires either targetBlockId or parentId');
   }
 
-  const blockId = `paragraph-${Date.now().toString(36)}`;
   return [
     {
       type: 'insertBlock',
       parentId,
       index: index ?? 0,
-      block: {
-        id: blockId,
-        type: 'paragraph',
-        props: {
-          text,
-          fontSize: '16px',
-          lineHeight: '1.6',
-          ...style,
-        },
+      blockType: 'paragraph',
+      props: {
+        content: text,
+        fontSize: '16px',
+        lineHeight: '1.6',
+        ...style,
       },
     },
   ];
@@ -246,5 +243,5 @@ function executeGenerateParagraph(input: Record<string, unknown>): EditorMutatio
 
 function executeAdjustTone(input: Record<string, unknown>): EditorMutation[] {
   const { blockId, newText } = input as { blockId: string; newText: string };
-  return [{ type: 'replaceText', blockId, text: newText }];
+  return [{ type: 'replaceText', blockId, content: newText }];
 }

@@ -1,91 +1,26 @@
 /**
  * Type definitions for the AI chat module.
+ *
+ * EditorMutation here mirrors the canonical definition in
+ * packages/web/src/features/pages/editor/mutations/types.ts
+ * to ensure server-generated mutations are directly consumable by the client.
  */
 
 // ---------------------------------------------------------------------------
-// Editor Mutations
+// Editor Mutations — canonical format (mirrors client mutations/types.ts)
 // ---------------------------------------------------------------------------
 
-export type EditorMutationType =
-  | 'insertBlock'
-  | 'updateBlockProps'
-  | 'removeBlock'
-  | 'moveBlock'
-  | 'replaceText'
-  | 'duplicateBlock'
-  | 'reorderChildren'
-  | 'updatePageSettings'
-  | 'updateScripts'
-  | 'setLayoutMode';
-
-export interface InsertBlockMutation {
-  type: 'insertBlock';
-  parentId: string;
-  index: number;
-  block: { id: string; type: string; props?: Record<string, unknown>; children?: string[] };
-}
-
-export interface UpdateBlockPropsMutation {
-  type: 'updateBlockProps';
-  blockId: string;
-  props: Record<string, unknown>;
-}
-
-export interface RemoveBlockMutation {
-  type: 'removeBlock';
-  blockId: string;
-}
-
-export interface MoveBlockMutation {
-  type: 'moveBlock';
-  blockId: string;
-  newParentId: string;
-  newIndex: number;
-}
-
-export interface ReplaceTextMutation {
-  type: 'replaceText';
-  blockId: string;
-  text: string;
-}
-
-export interface DuplicateBlockMutation {
-  type: 'duplicateBlock';
-  blockId: string;
-}
-
-export interface ReorderChildrenMutation {
-  type: 'reorderChildren';
-  parentId: string;
-  childIds: string[];
-}
-
-export interface UpdatePageSettingsMutation {
-  type: 'updatePageSettings';
-  settings: Record<string, unknown>;
-}
-
-export interface UpdateScriptsMutation {
-  type: 'updateScripts';
-  scripts: Record<string, unknown>;
-}
-
-export interface SetLayoutModeMutation {
-  type: 'setLayoutMode';
-  mode: 'fluid' | 'canvas';
-}
-
 export type EditorMutation =
-  | InsertBlockMutation
-  | UpdateBlockPropsMutation
-  | RemoveBlockMutation
-  | MoveBlockMutation
-  | ReplaceTextMutation
-  | DuplicateBlockMutation
-  | ReorderChildrenMutation
-  | UpdatePageSettingsMutation
-  | UpdateScriptsMutation
-  | SetLayoutModeMutation;
+  | { type: 'insertBlock'; parentId: string | null; index?: number; blockType: string; props?: Record<string, unknown>; blockId?: string }
+  | { type: 'updateBlockProps'; blockId: string; props: Record<string, unknown> }
+  | { type: 'removeBlock'; blockId: string }
+  | { type: 'moveBlock'; blockId: string; parentId: string | null; index: number }
+  | { type: 'replaceText'; blockId: string; content: string; contentHtml?: string }
+  | { type: 'duplicateBlock'; blockId: string }
+  | { type: 'reorderChildren'; parentId: string; childIds: string[] }
+  | { type: 'updatePageSettings'; settings: Record<string, unknown> }
+  | { type: 'updateScripts'; scripts: { header?: string; footer?: string } }
+  | { type: 'setLayoutMode'; mode: 'fluid' | 'canvas' };
 
 // ---------------------------------------------------------------------------
 // Chat / Request / Response

@@ -1,22 +1,27 @@
 /**
  * Hook that orchestrates the AI chat flow:
  * - Sends messages to the API
- * - Handles streaming responses
+ * - Handles streaming responses (SSE with named events)
  * - Extracts mutations from responses
  * - Manages pending mutations for user approval
  */
 
 import { useCallback, useRef } from 'react';
 import { useChatStore, type EditorMutation } from '../stores/chat-store';
-import { api } from '@/lib/api';
+import { buildPageSummary } from '../page-context';
+import { buildSectionMap } from '../section-map';
 
 export interface UseAIChatOptions {
   pageId: string;
   /** Currently selected block ID for context */
   selectedBlockId?: string | null;
+  /** Current editor content for building page context */
+  contentJson?: Record<string, unknown>;
+  /** Page title */
+  pageTitle?: string;
 }
 
-export function useAIChat({ pageId, selectedBlockId }: UseAIChatOptions) {
+export function useAIChat({ pageId, selectedBlockId, contentJson, pageTitle }: UseAIChatOptions) {
   const {
     messages,
     isStreaming,
@@ -48,13 +53,38 @@ export function useAIChat({ pageId, selectedBlockId }: UseAIChatOptions) {
       abortRef.current = controller;
 
       try {
-        const response = await api.ai.chat({
-          pageId,
-          conversationId,
-          message: content.trim(),
-          selectedBlockId: selectedBlockId ?? undefined,
+        // Build page context and section map from current editor content
+        const editorContent = contentJson as import('@/features/pages/editor/types').EditorContentJson | undefined;
+        const pageContext = editorContent
+          ? buildPageSummary(editorContent)
+          : { sectionCount: 0, blockCount: 0, blockCountByType: {} as Record<string, number>, colorPalette: [] as string[], fontFamilies: [] as string[], imageCount: 0, hasForm: false, layoutMode: 'fluid' as const, textSnippets: [] as { blockId: string; type: string; text: string }[] };
+        const sectionMap = editorContent
+          ? buildSectionMap(editorContent)
+          : [];
+
+        // Build conversation history from existing messages (exclude latest empty assistant msg)
+        const conversationHistory = messages
+          .filter((m: { content: string }) => m.content.trim() !== '')
+          .map((m: { role: string; content: string }) => ({ role: m.role, content: m.content }));
+
+        const response = await fetch('/api/v1/ai/chat', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: content.trim(),
+            pageContext,
+            sectionMap,
+            conversationHistory,
+            selectedBlockId: selectedBlockId ?? undefined,
+          }),
           signal: controller.signal,
         });
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error((errBody as { error?: string }).error ?? `Request failed (${response.status})`);
+        }
 
         let fullText = '';
         let mutations: EditorMutation[] | undefined;
@@ -62,34 +92,56 @@ export function useAIChat({ pageId, selectedBlockId }: UseAIChatOptions) {
         if (response.body) {
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
+          let buffer = '';
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
+            buffer += decoder.decode(value, { stream: true });
 
-            // Parse SSE-style lines
-            const lines = chunk.split('\n');
-            for (const line of lines) {
-              if (!line.trim()) continue;
+            // Parse SSE: server sends named events like:
+            //   event: text\ndata: {"text": "..."}\n\n
+            //   event: mutations\ndata: {"mutations": [...]}\n\n
+            //   event: done\ndata: {}\n\n
+            //   event: error\ndata: {"error": "..."}\n\n
+            const blocks = buffer.split('\n\n');
+            // Keep the last (possibly incomplete) block in the buffer
+            buffer = blocks.pop() ?? '';
 
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data === '[DONE]') continue;
+            for (const block of blocks) {
+              if (!block.trim()) continue;
 
-                try {
-                  const parsed = JSON.parse(data);
-                  if (parsed.type === 'text') {
-                    fullText += parsed.content ?? '';
-                    updateLastMessage(fullText);
-                  } else if (parsed.type === 'mutations') {
-                    mutations = parsed.mutations as EditorMutation[];
-                  }
-                } catch {
-                  // Partial chunk or not JSON — append as raw text
-                  fullText += data;
+              let eventType = '';
+              let dataStr = '';
+
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) {
+                  eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                  dataStr = line.slice(6);
+                }
+              }
+
+              if (!dataStr) continue;
+
+              try {
+                const parsed = JSON.parse(dataStr);
+
+                if (eventType === 'text') {
+                  fullText += parsed.text ?? '';
                   updateLastMessage(fullText);
+                } else if (eventType === 'mutations') {
+                  mutations = parsed.mutations as EditorMutation[];
+                } else if (eventType === 'error') {
+                  throw new Error(parsed.error ?? 'AI service error');
+                }
+                // eventType === 'done' — just end of stream, no action needed
+              } catch (e) {
+                if (e instanceof SyntaxError) {
+                  // Partial JSON — ignore
+                } else {
+                  throw e;
                 }
               }
             }
@@ -124,9 +176,12 @@ export function useAIChat({ pageId, selectedBlockId }: UseAIChatOptions) {
     },
     [
       pageId,
+      pageTitle,
+      contentJson,
       conversationId,
       selectedBlockId,
       isStreaming,
+      messages,
       addMessage,
       updateLastMessage,
       setStreaming,

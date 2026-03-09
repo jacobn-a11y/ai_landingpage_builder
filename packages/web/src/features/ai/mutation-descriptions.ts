@@ -1,53 +1,53 @@
-import type { EditorMutation } from './stores/chat-store';
+import type { EditorMutation } from '@/features/pages/editor/mutations/types';
 
 /**
  * Returns a human-readable description of a single mutation.
  */
 export function describeMutation(mutation: EditorMutation): string {
-  const blockLabel = mutation.blockId
-    ? `block "${mutation.blockId.slice(0, 8)}..."`
-    : 'block';
-
   switch (mutation.type) {
-    case 'update_text': {
+    case 'replaceText': {
       const preview =
-        typeof mutation.value === 'string'
-          ? mutation.value.length > 40
-            ? `"${mutation.value.slice(0, 40)}..."`
-            : `"${mutation.value}"`
-          : '';
-      return `Update text on ${blockLabel}${preview ? ` to ${preview}` : ''}`;
+        mutation.content.length > 40
+          ? `"${mutation.content.slice(0, 40)}..."`
+          : `"${mutation.content}"`;
+      return `Update text on block "${mutation.blockId.slice(0, 8)}..." to ${preview}`;
     }
 
-    case 'update_style': {
-      const prop = mutation.path?.replace('props.', '') ?? 'style';
-      return `Change ${prop} on ${blockLabel}`;
+    case 'updateBlockProps': {
+      const propNames = Object.keys(mutation.props).join(', ');
+      return `Update ${propNames || 'props'} on block "${mutation.blockId.slice(0, 8)}..."`;
     }
 
-    case 'insert_block': {
-      const blockType =
-        (mutation.blockJson?.type as string) ?? 'element';
+    case 'insertBlock': {
       const parentLabel = mutation.parentId
         ? `into "${mutation.parentId.slice(0, 8)}..."`
         : '';
-      return `Insert new ${blockType} ${parentLabel}`.trim();
+      return `Insert new ${mutation.blockType} ${parentLabel}`.trim();
     }
 
-    case 'remove_block':
-      return `Remove ${blockLabel}`;
+    case 'removeBlock':
+      return `Remove block "${mutation.blockId.slice(0, 8)}..."`;
 
-    case 'update_layout': {
-      const prop = mutation.path?.replace('props.', '') ?? 'layout';
-      return `Update ${prop} on ${blockLabel}`;
-    }
+    case 'moveBlock':
+      return `Move block "${mutation.blockId.slice(0, 8)}..."`;
 
-    case 'update_props': {
-      const prop = mutation.path?.replace('props.', '') ?? 'property';
-      return `Set ${prop} on ${blockLabel}`;
-    }
+    case 'duplicateBlock':
+      return `Duplicate block "${mutation.blockId.slice(0, 8)}..."`;
+
+    case 'reorderChildren':
+      return `Reorder children of "${mutation.parentId.slice(0, 8)}..."`;
+
+    case 'updatePageSettings':
+      return 'Update page settings';
+
+    case 'updateScripts':
+      return 'Update page scripts';
+
+    case 'setLayoutMode':
+      return `Set layout mode to ${mutation.mode}`;
 
     default:
-      return `Modify ${blockLabel}`;
+      return 'Modify page';
   }
 }
 
@@ -60,17 +60,16 @@ export function describeMutationBatch(mutations: EditorMutation[]): string {
 
   const counts: Record<string, number> = {};
   for (const m of mutations) {
-    const key = m.type;
-    counts[key] = (counts[key] ?? 0) + 1;
+    counts[m.type] = (counts[m.type] ?? 0) + 1;
   }
 
   const parts: string[] = [];
-  if (counts.update_text) parts.push(`${counts.update_text} text change${counts.update_text > 1 ? 's' : ''}`);
-  if (counts.update_style) parts.push(`${counts.update_style} style change${counts.update_style > 1 ? 's' : ''}`);
-  if (counts.insert_block) parts.push(`${counts.insert_block} insertion${counts.insert_block > 1 ? 's' : ''}`);
-  if (counts.remove_block) parts.push(`${counts.remove_block} removal${counts.remove_block > 1 ? 's' : ''}`);
-  if (counts.update_layout) parts.push(`${counts.update_layout} layout change${counts.update_layout > 1 ? 's' : ''}`);
-  if (counts.update_props) parts.push(`${counts.update_props} property update${counts.update_props > 1 ? 's' : ''}`);
+  if (counts.replaceText) parts.push(`${counts.replaceText} text change${counts.replaceText > 1 ? 's' : ''}`);
+  if (counts.updateBlockProps) parts.push(`${counts.updateBlockProps} style change${counts.updateBlockProps > 1 ? 's' : ''}`);
+  if (counts.insertBlock) parts.push(`${counts.insertBlock} insertion${counts.insertBlock > 1 ? 's' : ''}`);
+  if (counts.removeBlock) parts.push(`${counts.removeBlock} removal${counts.removeBlock > 1 ? 's' : ''}`);
+  if (counts.moveBlock) parts.push(`${counts.moveBlock} move${counts.moveBlock > 1 ? 's' : ''}`);
+  if (counts.duplicateBlock) parts.push(`${counts.duplicateBlock} duplication${counts.duplicateBlock > 1 ? 's' : ''}`);
 
   return `${mutations.length} changes: ${parts.join(', ')}`;
 }
@@ -80,17 +79,17 @@ export function describeMutationBatch(mutations: EditorMutation[]): string {
  */
 export function mutationIcon(type: EditorMutation['type']): string {
   switch (type) {
-    case 'update_text':
+    case 'replaceText':
       return '\u270F\uFE0F'; // pencil
-    case 'update_style':
+    case 'updateBlockProps':
       return '\uD83C\uDFA8'; // palette
-    case 'insert_block':
+    case 'insertBlock':
       return '\u2795'; // plus
-    case 'remove_block':
+    case 'removeBlock':
       return '\uD83D\uDDD1\uFE0F'; // wastebasket
-    case 'update_layout':
+    case 'moveBlock':
       return '\uD83D\uDCD0'; // triangular ruler
-    case 'update_props':
+    case 'duplicateBlock':
       return '\u2699\uFE0F'; // gear
     default:
       return '\uD83D\uDD27'; // wrench

@@ -25,26 +25,10 @@ export interface InspirationProfile {
 }
 
 // ---------------------------------------------------------------------------
-// Editor mutation (used by guardrails + smart-defaults)
+// Editor mutation — re-export from canonical source
 // ---------------------------------------------------------------------------
 
-export type EditorMutationType =
-  | 'addBlock'
-  | 'updateBlock'
-  | 'removeBlock'
-  | 'moveBlock'
-  | 'updatePageSettings';
-
-export interface EditorMutation {
-  type: EditorMutationType;
-  blockId?: string;
-  parentId?: string;
-  index?: number;
-  blockType?: string;
-  props?: Record<string, unknown>;
-  children?: string[];
-  pageSettings?: Record<string, unknown>;
-}
+export type { EditorMutation } from '@/features/pages/editor/mutations/types';
 
 // ---------------------------------------------------------------------------
 // Page summary (lightweight snapshot for context-builder / smart-defaults)

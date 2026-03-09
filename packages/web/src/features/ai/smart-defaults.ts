@@ -6,7 +6,8 @@
  */
 
 import type { EditorContentJson } from '@/features/pages/editor/types';
-import type { EditorMutation, PageSummary } from './types';
+import type { EditorMutation } from '@/features/pages/editor/mutations/types';
+import type { PageSummary } from './types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,13 +96,13 @@ export function applySmartDefaults(
   pageContext: PageSummary,
   _content: EditorContentJson,
 ): EditorMutation {
-  // Only relevant for addBlock and updateBlock
-  if (mutation.type !== 'addBlock' && mutation.type !== 'updateBlock') {
+  // Only relevant for insertBlock and updateBlockProps
+  if (mutation.type !== 'insertBlock' && mutation.type !== 'updateBlockProps') {
     return mutation;
   }
 
   const props = { ...(mutation.props ?? {}) };
-  const blockType = mutation.blockType ?? '';
+  const blockType = mutation.type === 'insertBlock' ? mutation.blockType : '';
 
   // -----------------------------------------------------------------------
   // Font family inheritance

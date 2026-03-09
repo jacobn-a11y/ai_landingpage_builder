@@ -1,26 +1,8 @@
 import { create } from 'zustand';
+import type { EditorMutation } from '@/features/pages/editor/mutations/types';
 
-// ---- Types ----
-
-export type MutationType =
-  | 'update_text'
-  | 'update_style'
-  | 'insert_block'
-  | 'remove_block'
-  | 'update_layout'
-  | 'update_props';
-
-export interface EditorMutation {
-  type: MutationType;
-  blockId?: string;
-  parentId?: string;
-  index?: number;
-  /** Property path, e.g. "props.content" or "props.backgroundColor" */
-  path?: string;
-  value?: unknown;
-  /** Full block JSON for insert operations */
-  blockJson?: Record<string, unknown>;
-}
+// Re-export the canonical EditorMutation so existing consumers keep working
+export type { EditorMutation } from '@/features/pages/editor/mutations/types';
 
 export interface ChatMessage {
   id: string;

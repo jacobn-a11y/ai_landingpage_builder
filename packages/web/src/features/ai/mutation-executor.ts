@@ -1,5 +1,5 @@
 import type { EditorContentJson, EditorBlock } from '@/features/pages/editor/types';
-import type { EditorMutation } from './stores/chat-store';
+import type { EditorMutation } from '@/features/pages/editor/mutations/types';
 
 export interface ExecutionReport {
   applied: number;
@@ -17,23 +17,6 @@ function generateBlockId(): string {
 }
 
 /**
- * Set a nested property on an object using a dot-separated path.
- * E.g. setNestedValue(block, "props.backgroundColor", "#fff")
- */
-function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
-  const parts = path.split('.');
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    if (current[key] == null || typeof current[key] !== 'object') {
-      current[key] = {};
-    }
-    current = current[key] as Record<string, unknown>;
-  }
-  current[parts[parts.length - 1]] = value;
-}
-
-/**
  * Validate a single mutation against the current content.
  */
 function validateMutation(
@@ -41,29 +24,49 @@ function validateMutation(
   content: EditorContentJson
 ): string | null {
   switch (mutation.type) {
-    case 'update_text':
-    case 'update_style':
-    case 'update_layout':
-    case 'update_props': {
-      if (!mutation.blockId) return 'Missing blockId';
-      if (!content.blocks[mutation.blockId]) return `Block "${mutation.blockId}" not found`;
-      if (!mutation.path) return 'Missing property path';
-      return null;
-    }
-    case 'insert_block': {
-      if (!mutation.blockJson) return 'Missing blockJson for insert';
-      if (mutation.parentId && !content.blocks[mutation.parentId]) {
+    case 'insertBlock': {
+      if (!mutation.blockType) return 'Missing blockType for insert';
+      if (mutation.parentId && mutation.parentId !== null && !content.blocks[mutation.parentId]) {
         return `Parent block "${mutation.parentId}" not found`;
       }
       return null;
     }
-    case 'remove_block': {
+    case 'updateBlockProps': {
       if (!mutation.blockId) return 'Missing blockId';
       if (!content.blocks[mutation.blockId]) return `Block "${mutation.blockId}" not found`;
       return null;
     }
+    case 'removeBlock': {
+      if (!mutation.blockId) return 'Missing blockId';
+      if (!content.blocks[mutation.blockId]) return `Block "${mutation.blockId}" not found`;
+      return null;
+    }
+    case 'moveBlock': {
+      if (!mutation.blockId) return 'Missing blockId';
+      if (!content.blocks[mutation.blockId]) return `Block "${mutation.blockId}" not found`;
+      return null;
+    }
+    case 'replaceText': {
+      if (!mutation.blockId) return 'Missing blockId';
+      if (!content.blocks[mutation.blockId]) return `Block "${mutation.blockId}" not found`;
+      return null;
+    }
+    case 'duplicateBlock': {
+      if (!mutation.blockId) return 'Missing blockId';
+      if (!content.blocks[mutation.blockId]) return `Block "${mutation.blockId}" not found`;
+      return null;
+    }
+    case 'reorderChildren': {
+      if (!mutation.parentId) return 'Missing parentId';
+      if (!content.blocks[mutation.parentId]) return `Parent block "${mutation.parentId}" not found`;
+      return null;
+    }
+    case 'updatePageSettings':
+    case 'updateScripts':
+    case 'setLayoutMode':
+      return null;
     default:
-      return `Unknown mutation type: ${mutation.type}`;
+      return `Unknown mutation type: ${(mutation as { type: string }).type}`;
   }
 }
 
@@ -75,23 +78,11 @@ function applyMutation(
   content: EditorContentJson
 ): void {
   switch (mutation.type) {
-    case 'update_text':
-    case 'update_style':
-    case 'update_layout':
-    case 'update_props': {
-      const block = content.blocks[mutation.blockId!];
-      if (!block || !mutation.path) return;
-      const blockObj = block as unknown as Record<string, unknown>;
-      setNestedValue(blockObj, mutation.path, mutation.value);
-      break;
-    }
-
-    case 'insert_block': {
+    case 'insertBlock': {
       const newBlock: EditorBlock = {
-        id: generateBlockId(),
-        type: (mutation.blockJson?.type as string) ?? 'container',
-        props: (mutation.blockJson?.props as Record<string, unknown>) ?? {},
-        children: (mutation.blockJson?.children as string[]) ?? undefined,
+        id: mutation.blockId ?? generateBlockId(),
+        type: mutation.blockType as EditorBlock['type'],
+        props: mutation.props ?? {},
       } as EditorBlock;
 
       content.blocks[newBlock.id] = newBlock;
@@ -100,15 +91,47 @@ function applyMutation(
       if (parentId && content.blocks[parentId]) {
         const parent = content.blocks[parentId];
         const children = parent.children ?? [];
-        const idx = mutation.index ?? children.length;
+        const idx = (mutation.index !== undefined && mutation.index >= 0) ? mutation.index : children.length;
         const next = [...children.slice(0, idx), newBlock.id, ...children.slice(idx)];
         content.blocks[parentId] = { ...parent, children: next };
       }
       break;
     }
 
-    case 'remove_block': {
-      const blockId = mutation.blockId!;
+    case 'updateBlockProps': {
+      const block = content.blocks[mutation.blockId];
+      if (!block) return;
+      content.blocks[mutation.blockId] = {
+        ...block,
+        props: { ...(block.props ?? {}), ...mutation.props },
+      };
+      break;
+    }
+
+    case 'replaceText': {
+      const block = content.blocks[mutation.blockId];
+      if (!block) return;
+      content.blocks[mutation.blockId] = {
+        ...block,
+        props: {
+          ...(block.props ?? {}),
+          content: mutation.content,
+          ...(mutation.contentHtml ? { contentHtml: mutation.contentHtml } : {}),
+        },
+      };
+      break;
+    }
+
+    case 'removeBlock': {
+      const blockId = mutation.blockId;
+      // Collect descendants first, then delete
+      const toRemove = new Set<string>();
+      const collect = (id: string) => {
+        toRemove.add(id);
+        const b = content.blocks[id];
+        b?.children?.forEach(collect);
+      };
+      collect(blockId);
       // Remove from any parent's children
       for (const [id, block] of Object.entries(content.blocks)) {
         if (block.children?.includes(blockId)) {
@@ -118,20 +141,78 @@ function applyMutation(
           };
         }
       }
-      // Remove the block and its descendants
-      const toRemove = new Set<string>();
-      const collect = (id: string) => {
-        toRemove.add(id);
-        const b = content.blocks[id];
-        b?.children?.forEach(collect);
-      };
-      collect(blockId);
+      // Delete collected blocks
       for (const id of toRemove) {
         delete content.blocks[id];
       }
       if (content.root === blockId) {
         content.root = Object.keys(content.blocks)[0] ?? '';
       }
+      break;
+    }
+
+    case 'moveBlock': {
+      const blockId = mutation.blockId;
+      // Remove from current parent
+      for (const [id, block] of Object.entries(content.blocks)) {
+        if (block.children?.includes(blockId)) {
+          content.blocks[id] = {
+            ...block,
+            children: block.children.filter((c) => c !== blockId),
+          };
+        }
+      }
+      // Add to new parent
+      const newParentId = mutation.parentId ?? content.root;
+      if (newParentId && content.blocks[newParentId]) {
+        const parent = content.blocks[newParentId];
+        const children = parent.children ?? [];
+        const idx = mutation.index;
+        const next = [...children.slice(0, idx), blockId, ...children.slice(idx)];
+        content.blocks[newParentId] = { ...parent, children: next };
+      }
+      break;
+    }
+
+    case 'duplicateBlock': {
+      const original = content.blocks[mutation.blockId];
+      if (!original) return;
+      const newId = generateBlockId();
+      content.blocks[newId] = { ...original, id: newId, props: { ...(original.props ?? {}) } };
+      // Insert after original in parent's children
+      for (const [id, block] of Object.entries(content.blocks)) {
+        if (block.children?.includes(mutation.blockId)) {
+          const idx = block.children.indexOf(mutation.blockId);
+          const next = [...block.children.slice(0, idx + 1), newId, ...block.children.slice(idx + 1)];
+          content.blocks[id] = { ...block, children: next };
+          break;
+        }
+      }
+      break;
+    }
+
+    case 'reorderChildren': {
+      const parent = content.blocks[mutation.parentId];
+      if (!parent) return;
+      content.blocks[mutation.parentId] = { ...parent, children: mutation.childIds };
+      break;
+    }
+
+    case 'updatePageSettings': {
+      content.pageSettings = { ...(content.pageSettings ?? {}), ...mutation.settings };
+      break;
+    }
+
+    case 'updateScripts': {
+      // Scripts are stored at content level in some implementations
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c = content as any;
+      c.scripts = { ...(c.scripts ?? {}), ...mutation.scripts };
+      break;
+    }
+
+    case 'setLayoutMode': {
+      content.layoutMode = mutation.mode;
       break;
     }
   }

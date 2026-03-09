@@ -77,8 +77,8 @@ export function heroTemplate(): SectionTemplate {
     id: headlineId,
     type: 'headline',
     props: {
-      text: 'Build Something Remarkable',
-      level: 1,
+      content: 'Build Something Remarkable',
+      headingLevel: 'h1',
       fontSize: '48px',
       fontWeight: '700',
       textAlign: 'center',
@@ -90,7 +90,7 @@ export function heroTemplate(): SectionTemplate {
     id: paragraphId,
     type: 'paragraph',
     props: {
-      text: 'Empower your team with tools that simplify complexity and accelerate growth. Start building better experiences today.',
+      content: 'Empower your team with tools that simplify complexity and accelerate growth. Start building better experiences today.',
       fontSize: '20px',
       textAlign: 'center',
       color: '#4a4a68',
@@ -128,8 +128,8 @@ export function featuresTemplate(): SectionTemplate {
     id: headlineId,
     type: 'headline',
     props: {
-      text: 'Everything You Need to Succeed',
-      level: 2,
+      content: 'Everything You Need to Succeed',
+      headingLevel: 'h2',
       fontSize: '36px',
       fontWeight: '700',
       textAlign: 'center',
@@ -154,13 +154,13 @@ export function featuresTemplate(): SectionTemplate {
     const titleBlock: EditorBlock = {
       id: titleId,
       type: 'headline',
-      props: { text: feat.title, level: 3, fontSize: '22px', fontWeight: '600', color: '#1a1a2e' },
+      props: { content: feat.title, headingLevel: 'h3', fontSize: '22px', fontWeight: '600', color: '#1a1a2e' },
     };
 
     const descBlock: EditorBlock = {
       id: descId,
       type: 'paragraph',
-      props: { text: feat.description, fontSize: '16px', color: '#4a4a68', lineHeight: '1.5' },
+      props: { content: feat.description, fontSize: '16px', color: '#4a4a68', lineHeight: '1.5' },
     };
 
     const card: EditorBlock = {
@@ -197,8 +197,8 @@ export function testimonialsTemplate(): SectionTemplate {
     id: headlineId,
     type: 'headline',
     props: {
-      text: 'Trusted by Teams Worldwide',
-      level: 2,
+      content: 'Trusted by Teams Worldwide',
+      headingLevel: 'h2',
       fontSize: '36px',
       fontWeight: '700',
       textAlign: 'center',
@@ -223,13 +223,13 @@ export function testimonialsTemplate(): SectionTemplate {
     const quoteBlock: EditorBlock = {
       id: quoteId,
       type: 'paragraph',
-      props: { text: `"${t.quote}"`, fontSize: '16px', color: '#4a4a68', lineHeight: '1.6' },
+      props: { content: `"${t.quote}"`, fontSize: '16px', color: '#4a4a68', lineHeight: '1.6' },
     };
 
     const authorBlock: EditorBlock = {
       id: authorId,
       type: 'paragraph',
-      props: { text: `— ${t.author}`, fontSize: '14px', color: '#6b7280', fontWeight: '600' },
+      props: { content: `— ${t.author}`, fontSize: '14px', color: '#6b7280', fontWeight: '600' },
     };
 
     const card: EditorBlock = {
@@ -267,8 +267,8 @@ export function ctaTemplate(): SectionTemplate {
     id: headlineId,
     type: 'headline',
     props: {
-      text: 'Ready to Get Started?',
-      level: 2,
+      content: 'Ready to Get Started?',
+      headingLevel: 'h2',
       fontSize: '36px',
       fontWeight: '700',
       textAlign: 'center',
@@ -280,7 +280,7 @@ export function ctaTemplate(): SectionTemplate {
     id: paragraphId,
     type: 'paragraph',
     props: {
-      text: 'Join thousands of teams already building better experiences. No credit card required.',
+      content: 'Join thousands of teams already building better experiences. No credit card required.',
       fontSize: '18px',
       textAlign: 'center',
       color: '#e0e0ff',
@@ -318,8 +318,8 @@ export function faqTemplate(): SectionTemplate {
     id: headlineId,
     type: 'headline',
     props: {
-      text: 'Frequently Asked Questions',
-      level: 2,
+      content: 'Frequently Asked Questions',
+      headingLevel: 'h2',
       fontSize: '36px',
       fontWeight: '700',
       textAlign: 'center',
@@ -356,8 +356,8 @@ export function pricingTemplate(): SectionTemplate {
     id: headlineId,
     type: 'headline',
     props: {
-      text: 'Simple, Transparent Pricing',
-      level: 2,
+      content: 'Simple, Transparent Pricing',
+      headingLevel: 'h2',
       fontSize: '36px',
       fontWeight: '700',
       textAlign: 'center',
@@ -384,19 +384,19 @@ export function pricingTemplate(): SectionTemplate {
     const nameBlock: EditorBlock = {
       id: nameId,
       type: 'headline',
-      props: { text: plan.name, level: 3, fontSize: '20px', fontWeight: '600', color: '#1a1a2e', textAlign: 'center' },
+      props: { content: plan.name, headingLevel: 'h3', fontSize: '20px', fontWeight: '600', color: '#1a1a2e', textAlign: 'center' },
     };
 
     const priceBlock: EditorBlock = {
       id: priceId,
       type: 'headline',
-      props: { text: plan.price, level: 2, fontSize: '40px', fontWeight: '700', color: '#4f46e5', textAlign: 'center' },
+      props: { content: plan.price, headingLevel: 'h2', fontSize: '40px', fontWeight: '700', color: '#4f46e5', textAlign: 'center' },
     };
 
     const descBlock: EditorBlock = {
       id: descId,
       type: 'paragraph',
-      props: { text: plan.description, fontSize: '16px', color: '#4a4a68', textAlign: 'center', lineHeight: '1.5' },
+      props: { content: plan.description, fontSize: '16px', color: '#4a4a68', textAlign: 'center', lineHeight: '1.5' },
     };
 
     const btnBlock: EditorBlock = {
