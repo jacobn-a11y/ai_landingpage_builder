@@ -93,6 +93,15 @@ async function fetchHookedFormBindings(pageId: string): Promise<HookedFormBindin
     }));
 }
 
+async function fetchScopedStylesheets(pageId: string): Promise<{ scopeId: string; cssText: string }[]> {
+  const sheets = await prisma.pageStylesheet.findMany({
+    where: { pageId },
+    select: { scopeId: true, cssText: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return sheets;
+}
+
 function applyRedirects(redirects: unknown, path: string): { redirect: string; status: number } | null {
   const rules = Array.isArray(redirects) ? redirects : [];
   const normalized = path.startsWith('/') ? path : `/${path}`;
@@ -143,9 +152,10 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
   securityHeaders(res, { embedPolicy: 'deny', scriptAllowlist: allowlist });
 
   const content = page.lastPublishedContentJson as PageContentJson & { pageSettings?: object; stickyBars?: StickyBarData[]; popups?: PopupData[] };
-  const [formIds, hookedFormBindings] = await Promise.all([
+  const [formIds, hookedFormBindings, scopedStylesheets] = await Promise.all([
     Promise.resolve(extractFormIdsFromContent(content)),
     fetchHookedFormBindings(page.id),
+    fetchScopedStylesheets(page.id),
   ]);
   const forms = await fetchFormSchemas(formIds);
   const urlParams = getUrlParams(req);
@@ -170,6 +180,7 @@ serveRouter.get('/demo/:workspaceId/*', async (req: Request, res: Response) => {
     stickyBars: content?.stickyBars,
     popups: content?.popups,
     hookedFormBindings,
+    scopedStylesheets,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -288,9 +299,10 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
   });
 
   const content = page.lastPublishedContentJson as PageContentJson & { pageSettings?: object; stickyBars?: StickyBarData[]; popups?: PopupData[] };
-  const [formIds, hookedFormBindings] = await Promise.all([
+  const [formIds, hookedFormBindings, scopedStylesheets] = await Promise.all([
     Promise.resolve(extractFormIdsFromContent(content)),
     fetchHookedFormBindings(page.id),
+    fetchScopedStylesheets(page.id),
   ]);
   const forms = await fetchFormSchemas(formIds);
   const urlParams = getUrlParams(req);
@@ -315,6 +327,7 @@ serveRouter.get('/domain/:domainId/*', async (req: Request, res: Response) => {
     stickyBars: content?.stickyBars,
     popups: content?.popups,
     hookedFormBindings,
+    scopedStylesheets,
   });
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -350,9 +363,10 @@ serveRouter.get('/preview/:pageId', requireAuth, async (req: Request, res: Respo
   const workspace = page.workspace;
   const allowlist = (workspace?.scriptAllowlist ?? []) as unknown as ScriptAllowlist;
   securityHeaders(res, { embedPolicy: 'deny', scriptAllowlist: allowlist });
-  const [formIds, hookedFormBindings] = await Promise.all([
+  const [formIds, hookedFormBindings, scopedStylesheets] = await Promise.all([
     Promise.resolve(extractFormIdsFromContent(content)),
     fetchHookedFormBindings(page.id),
+    fetchScopedStylesheets(page.id),
   ]);
   const forms = await fetchFormSchemas(formIds);
   const urlParams = getUrlParams(req);
@@ -377,6 +391,7 @@ serveRouter.get('/preview/:pageId', requireAuth, async (req: Request, res: Respo
     stickyBars: content?.stickyBars,
     popups: content?.popups,
     hookedFormBindings,
+    scopedStylesheets,
   });
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);

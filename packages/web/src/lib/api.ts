@@ -19,6 +19,27 @@ async function fetchApi<T>(
   return res.json();
 }
 
+/**
+ * Upload multipart form data (no Content-Type header — browser sets boundary).
+ */
+async function fetchApiFormData<T>(
+  path: string,
+  formData: FormData,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    ...options,
+    credentials: 'include',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error ?? 'Request failed');
+  }
+  return res.json();
+}
+
 export const api = {
   auth: {
     me: () => fetchApi<{ user: AuthUser | null }>('/auth/me'),
@@ -212,6 +233,26 @@ export const api = {
       fetchApi<{ ok: boolean; message?: string }>(`/integrations/${id}/test`, {
         method: 'POST',
       }),
+  },
+  import: {
+    mhtml: (
+      file: File,
+      opts?: { name?: string; slug?: string; folderId?: string; retainSource?: boolean; force?: boolean; includeDebugBundle?: boolean },
+    ): Promise<ImportJobResponse> => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (opts?.name) fd.append('name', opts.name);
+      if (opts?.slug) fd.append('slug', opts.slug);
+      if (opts?.folderId) fd.append('folderId', opts.folderId);
+      if (opts?.retainSource) fd.append('retainSource', 'true');
+      if (opts?.force) fd.append('force', 'true');
+      if (opts?.includeDebugBundle) fd.append('includeDebugBundle', 'true');
+      return fetchApiFormData<ImportJobResponse>('/import/mhtml', fd);
+    },
+    status: (jobId: string) =>
+      fetchApi<ImportJobStatus>(`/import/jobs/${jobId}`),
+    cancel: (jobId: string) =>
+      fetchApi<{ jobId: string; status: string }>(`/import/jobs/${jobId}`, { method: 'DELETE' }),
   },
   library: {
     listFolders: () =>
@@ -419,6 +460,26 @@ export type BlockLibraryItem = {
   type: 'element' | 'block';
   blockJson: object;
   createdAt: string;
+};
+
+export type ImportJobResponse = {
+  jobId: string;
+  status: string;
+};
+
+export type ImportJobStatus = {
+  jobId: string;
+  status: string;
+  stage?: string | null;
+  resultPageId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  stats?: Record<string, unknown> | null;
+  timings?: Record<string, number> | null;
+  sourceRetained?: boolean;
+  schemaVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type BlockLibraryFolder = {

@@ -5,6 +5,8 @@
 import type { BlockType } from '@replica-pages/blocks';
 import { useEditor } from './EditorContext';
 import { getUniversalStyleObject, hasUniversalProps } from './universal-props';
+import { ImportSafeWrapper } from './ImportSafeWrapper';
+import { TierCTokenEditor, type TokenDef } from './TierCTokenEditor';
 import {
   BlockText,
   BlockHeadline,
@@ -40,7 +42,7 @@ interface BlockRendererProps {
 }
 
 export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
-  const { content, previewMode, page, breakpoint } = useEditor();
+  const { content, previewMode, page, breakpoint, updateBlock } = useEditor();
   const block = content.blocks[blockId];
   if (!block) return null;
 
@@ -241,13 +243,67 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           redirectUrl={props.redirectUrl as string | undefined}
         />
       );
-    case 'customHtml':
+    case 'customHtml': {
+      const importMeta = props._importMeta as { tier?: string; scopeId?: string; scopedCss?: string; tokens?: TokenDef[] } | undefined;
+      const tier = importMeta?.tier;
+
+      // Tier C: token-based editing for isolated HTML
+      if (tier === 'C' && importMeta?.tokens) {
+        return (
+          <ImportSafeWrapper scopeId={importMeta.scopeId || block.id} scopedCss={importMeta.scopedCss}>
+            <TierCTokenEditor
+              html={(props.html as string) ?? ''}
+              tokens={importMeta.tokens}
+              onTokenUpdate={(tokenId, newValue) => {
+                if (!editMode) return;
+                const updatedTokens = (importMeta.tokens || []).map((t) =>
+                  t.id === tokenId ? { ...t, current: newValue } : t
+                );
+                updateBlock(block.id, { props: { ...baseProps, _importMeta: { ...importMeta, tokens: updatedTokens } } });
+              }}
+              previewMode={!editMode}
+            />
+          </ImportSafeWrapper>
+        );
+      }
+
+      // Tier D: locked render, no editing
+      if (tier === 'D') {
+        return (
+          <ImportSafeWrapper scopeId={importMeta?.scopeId || block.id} scopedCss={importMeta?.scopedCss}>
+            <div
+              dangerouslySetInnerHTML={{ __html: (props.html as string) ?? '' }}
+              style={{ pointerEvents: editMode ? 'none' : undefined }}
+            />
+            {editMode && (
+              <div className="absolute inset-0 flex items-center justify-center bg-muted/40 text-xs text-muted-foreground">
+                Locked import — rebuild to edit
+              </div>
+            )}
+          </ImportSafeWrapper>
+        );
+      }
+
+      // Tier A/B with scoped CSS: wrap in ImportSafeWrapper
+      if (importMeta?.scopeId) {
+        return (
+          <ImportSafeWrapper scopeId={importMeta.scopeId} scopedCss={importMeta.scopedCss}>
+            <BlockCustomHtml
+              {...common}
+              html={(props.html as string) ?? ''}
+            />
+          </ImportSafeWrapper>
+        );
+      }
+
+      // Non-imported customHtml: standard rendering
       return (
         <BlockCustomHtml
           {...common}
           html={(props.html as string) ?? ''}
         />
       );
+    }
     case 'accordion':
       return (
         <BlockAccordion

@@ -180,7 +180,13 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       break;
     case 'customHtml': {
       const raw = replaceDynamicText(String(props.html ?? ''), ctx?.urlParams);
-      result = sanitizeCustomHtml(raw);
+      const importMeta = props._importMeta as { tier?: string; scopeId?: string } | undefined;
+      if (importMeta?.scopeId) {
+        // Imported block: wrap with scope attribute for scoped CSS matching
+        result = `<div data-import-scope="${escapeHtml(importMeta.scopeId)}">${sanitizeCustomHtml(raw)}</div>`;
+      } else {
+        result = sanitizeCustomHtml(raw);
+      }
       break;
     }
     case 'video': {
@@ -447,6 +453,8 @@ export interface RenderPageOptions {
   stickyBars?: StickyBarData[];
   popups?: PopupData[];
   hookedFormBindings?: HookedFormBinding[];
+  /** Scoped CSS fragments from imported blocks (PageStylesheet records) */
+  scopedStylesheets?: { scopeId: string; cssText: string }[];
 }
 
 function renderOverlayContent(blocks: Record<string, BaseBlock>, rootId: string): string {
@@ -530,9 +538,13 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
     stickyBars,
     popups,
     hookedFormBindings,
+    scopedStylesheets,
   } = opts;
   const headerScripts = [globalHeaderScript ?? '', scripts?.header ?? '']
     .filter(Boolean)
+    .join('\n');
+  const scopedCssBlock = (scopedStylesheets ?? [])
+    .map((s) => `<style data-import-scope="${escapeHtml(s.scopeId)}">${s.cssText}</style>`)
     .join('\n');
   const footerScripts = [globalFooterScript ?? '', scripts?.footer ?? '']
     .filter(Boolean)
@@ -558,6 +570,7 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   <script>
     window.__REPLICA_PAGE__ = { pageId: "${escapeHtml(pageId)}", pageName: "${escapeHtml(pageName ?? '')}", pageSlug: "${escapeHtml(pageSlug)}", formActionUrl: "${escapeHtml(formActionUrl)}" };
   </script>
+  ${scopedCssBlock}
   ${headerScripts}
 </head>
 <body${bodyStyleAttr}>

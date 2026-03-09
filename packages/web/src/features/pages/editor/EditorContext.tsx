@@ -99,6 +99,10 @@ export interface EditorContextValue {
   updatePopup: (id: string, updates: Partial<Omit<Popup, 'root' | 'blocks'>>) => void;
   removePopup: (id: string) => void;
   updateOverlayBlocks: (type: 'stickyBar' | 'popup', id: string, root: string, blocks: Record<string, EditorBlock>) => void;
+  /** Scoped CSS from imported blocks, keyed by scopeId */
+  scopedStyles: Record<string, string>;
+  updateScopedStyle: (scopeId: string, cssText: string) => void;
+  deleteScopedStyle: (scopeId: string) => void;
 }
 
 const EditorContext = createContext<EditorContextValue | null>(null);
@@ -153,6 +157,19 @@ export function EditorProvider({
     });
     if (fonts.size > 0) loadGoogleFonts(Array.from(fonts));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scoped CSS from imported blocks (keyed by scopeId)
+  const [scopedStyles, setScopedStyles] = useState<Record<string, string>>({});
+  const updateScopedStyle = useCallback((scopeId: string, cssText: string) => {
+    setScopedStyles((prev) => ({ ...prev, [scopeId]: cssText }));
+  }, []);
+  const deleteScopedStyle = useCallback((scopeId: string) => {
+    setScopedStyles((prev) => {
+      const next = { ...prev };
+      delete next[scopeId];
+      return next;
+    });
+  }, []);
 
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -887,6 +904,9 @@ export function EditorProvider({
       updatePopup,
       removePopup,
       updateOverlayBlocks,
+      scopedStyles,
+      updateScopedStyle,
+      deleteScopedStyle,
     }),
     [
       pageId,
@@ -934,6 +954,9 @@ export function EditorProvider({
       addPopup,
       updatePopup,
       updateOverlayBlocks,
+      scopedStyles,
+      updateScopedStyle,
+      deleteScopedStyle,
     ]
   );
 
