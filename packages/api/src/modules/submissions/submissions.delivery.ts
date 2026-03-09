@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { prisma } from '../../shared/db.js';
 import { isSafeWebhookUrl } from '../../shared/validate-url.js';
 import { decryptOrFallback } from '../../shared/crypto.js';
@@ -10,6 +11,11 @@ interface DeliveryAttempt {
   status: 'success' | 'failed';
   error?: string;
   at: string;
+}
+
+interface WebhookConfig {
+  webhookUrl?: string;
+  secret?: string;
 }
 
 /**
@@ -40,15 +46,26 @@ export async function queueZapierDelivery(submissionId: string): Promise<void> {
   let lastError: string | undefined;
 
   for (const integration of integrations) {
-    const webhookUrl = getWebhookUrl(integration);
-    if (!webhookUrl || !isSafeWebhookUrl(webhookUrl)) continue;
+    const config = getWebhookConfig(integration);
+    if (!config?.webhookUrl || !isSafeWebhookUrl(config.webhookUrl)) continue;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        const res = await fetch(webhookUrl, {
+        const bodyStr = JSON.stringify(submission.payloadJson);
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+        // HMAC signing when secret is configured
+        if (config.secret) {
+          const signature = createHmac('sha256', config.secret)
+            .update(bodyStr)
+            .digest('hex');
+          headers['X-Replica-Signature'] = `sha256=${signature}`;
+        }
+
+        const res = await fetch(config.webhookUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(submission.payloadJson),
+          headers,
+          body: bodyStr,
         });
 
         if (res.ok) {
@@ -95,11 +112,10 @@ export async function queueZapierDelivery(submissionId: string): Promise<void> {
   });
 }
 
-function getWebhookUrl(integration: { configEncrypted: string | null }): string | null {
+function getWebhookConfig(integration: { configEncrypted: string | null }): WebhookConfig | null {
   if (!integration.configEncrypted) return null;
   try {
-    const config = JSON.parse(decryptOrFallback(integration.configEncrypted)) as { webhookUrl?: string };
-    return config.webhookUrl || null;
+    return JSON.parse(decryptOrFallback(integration.configEncrypted)) as WebhookConfig;
   } catch {
     return null;
   }

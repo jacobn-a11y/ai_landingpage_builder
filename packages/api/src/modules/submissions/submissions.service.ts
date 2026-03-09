@@ -136,3 +136,136 @@ const CANONICAL_CONTACT_FIELDS = [
   'company',
   'title',
 ];
+
+// ── Query helpers ──────────────────────────────────────────────────
+
+export interface ListSubmissionsOpts {
+  workspaceId: string;
+  pageId?: string;
+  from?: string; // ISO date
+  to?: string;   // ISO date
+  page?: number;  // 1-based
+  limit?: number; // max 200
+}
+
+export async function listSubmissions(opts: ListSubmissionsOpts) {
+  const { workspaceId, pageId, from, to } = opts;
+  const page = Math.max(1, opts.page ?? 1);
+  const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
+  const skip = (page - 1) * limit;
+
+  const where: Record<string, unknown> = { workspaceId };
+  if (pageId) where.pageId = pageId;
+  if (from || to) {
+    const createdAt: Record<string, Date> = {};
+    if (from) createdAt.gte = new Date(from);
+    if (to) createdAt.lte = new Date(to);
+    where.createdAt = createdAt;
+  }
+
+  const [submissions, total] = await Promise.all([
+    prisma.submission.findMany({
+      where,
+      include: { page: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.submission.count({ where }),
+  ]);
+
+  return { submissions, total, page, limit };
+}
+
+export async function getSubmission(id: string, workspaceId: string) {
+  return prisma.submission.findFirst({
+    where: { id, workspaceId },
+    include: { page: { select: { id: true, name: true, slug: true } } },
+  });
+}
+
+// ── CSV export ─────────────────────────────────────────────────────
+
+const CSV_HEADER_FIELDS = [
+  'id', 'created_at', 'page_name', 'page_slug',
+  'first_name', 'last_name', 'email', 'phone', 'company', 'title',
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_page',
+  'page_url', 'referrer', 'landing_url', 'user_agent',
+  'delivery_status',
+];
+
+export async function exportToCsv(opts: Omit<ListSubmissionsOpts, 'page' | 'limit'>): Promise<string> {
+  const where: Record<string, unknown> = { workspaceId: opts.workspaceId };
+  if (opts.pageId) where.pageId = opts.pageId;
+  if (opts.from || opts.to) {
+    const createdAt: Record<string, Date> = {};
+    if (opts.from) createdAt.gte = new Date(opts.from);
+    if (opts.to) createdAt.lte = new Date(opts.to);
+    where.createdAt = createdAt;
+  }
+
+  const submissions = await prisma.submission.findMany({
+    where,
+    include: { page: { select: { name: true, slug: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 10_000,
+  });
+
+  // Collect all custom field keys across submissions
+  const customKeys = new Set<string>();
+  const consentKeys = new Set<string>();
+  for (const s of submissions) {
+    const p = s.payloadJson as Record<string, unknown>;
+    if (p.custom_fields && typeof p.custom_fields === 'object') {
+      for (const k of Object.keys(p.custom_fields as object)) customKeys.add(k);
+    }
+    if (p.consent_fields && typeof p.consent_fields === 'object') {
+      for (const k of Object.keys(p.consent_fields as object)) consentKeys.add(k);
+    }
+  }
+
+  const sortedCustom = [...customKeys].sort();
+  const sortedConsent = [...consentKeys].sort();
+  const allHeaders = [
+    ...CSV_HEADER_FIELDS,
+    ...sortedCustom.map((k) => `custom_${k}`),
+    ...sortedConsent.map((k) => `consent_${k}`),
+  ];
+
+  const rows: string[] = [allHeaders.map(escapeCsv).join(',')];
+
+  for (const s of submissions) {
+    const p = s.payloadJson as Record<string, unknown>;
+    const custom = (p.custom_fields as Record<string, string>) || {};
+    const consent = (p.consent_fields as Record<string, boolean>) || {};
+
+    const vals: string[] = [
+      s.id,
+      s.createdAt.toISOString(),
+      s.page?.name ?? '',
+      s.page?.slug ?? '',
+      str(p.first_name), str(p.last_name), str(p.email), str(p.phone),
+      str(p.company), str(p.title),
+      str(p.utm_source), str(p.utm_medium), str(p.utm_campaign),
+      str(p.utm_term), str(p.utm_content), str(p.utm_page),
+      str(p.page_url), str(p.referrer), str(p.landing_url), str(p.user_agent),
+      s.deliveryStatus ?? '',
+      ...sortedCustom.map((k) => custom[k] ?? ''),
+      ...sortedConsent.map((k) => consent[k] != null ? String(consent[k]) : ''),
+    ];
+    rows.push(vals.map(escapeCsv).join(','));
+  }
+
+  return rows.join('\n');
+}
+
+function str(v: unknown): string {
+  return typeof v === 'string' ? v : v != null ? String(v) : '';
+}
+
+function escapeCsv(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}

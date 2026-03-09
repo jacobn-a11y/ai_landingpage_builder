@@ -10,6 +10,16 @@ export const integrationsRouter = Router();
 
 const adminMiddleware = [requireAuth, requireWorkspace, requireRole(['Admin'])];
 
+function toSafe(i: { id: string; type: string; configEncrypted: string | null; createdAt: Date }) {
+  return { id: i.id, type: i.type, hasConfig: !!i.configEncrypted, createdAt: i.createdAt };
+}
+
+function encryptZapierConfig(webhookUrl: string, secret?: string): string {
+  const obj: Record<string, string> = { webhookUrl };
+  if (secret) obj.secret = secret;
+  return encrypt(JSON.stringify(obj));
+}
+
 integrationsRouter.get('/', ...adminMiddleware, async (req: Request, res: Response) => {
   const workspaceId = req.session!.workspaceId!;
 
@@ -18,15 +28,7 @@ integrationsRouter.get('/', ...adminMiddleware, async (req: Request, res: Respon
     orderBy: { createdAt: 'desc' },
   });
 
-  // Mask sensitive config in list
-  const safe = integrations.map((i) => ({
-    id: i.id,
-    type: i.type,
-    hasConfig: !!i.configEncrypted,
-    createdAt: i.createdAt,
-  }));
-
-  res.json({ integrations: safe });
+  res.json({ integrations: integrations.map(toSafe) });
 });
 
 integrationsRouter.get('/:id', ...adminMiddleware, async (req: Request, res: Response) => {
@@ -90,25 +92,51 @@ integrationsRouter.post('/', ...adminMiddleware, async (req: Request, res: Respo
       res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
       return;
     }
-    configEncrypted = encrypt(JSON.stringify({ webhookUrl: trimmedUrl }));
+    const secret = typeof config.secret === 'string' ? config.secret.trim() : undefined;
+    configEncrypted = encryptZapierConfig(trimmedUrl, secret || undefined);
   }
 
   const integration = await prisma.integration.create({
-    data: {
-      workspaceId,
-      type,
-      configEncrypted,
-    },
+    data: { workspaceId, type, configEncrypted },
   });
 
-  res.status(201).json({
-    integration: {
-      id: integration.id,
-      type: integration.type,
-      hasConfig: !!integration.configEncrypted,
-      createdAt: integration.createdAt,
-    },
+  res.status(201).json({ integration: toSafe(integration) });
+});
+
+// PUT /api/v1/integrations/:id - full replace
+integrationsRouter.put('/:id', ...adminMiddleware, async (req: Request, res: Response) => {
+  const workspaceId = req.session!.workspaceId!;
+  const { id } = req.params;
+  const { config } = req.body;
+
+  const integration = await prisma.integration.findFirst({
+    where: { id, workspaceId },
   });
+
+  if (!integration) {
+    res.status(404).json({ error: 'Integration not found' });
+    return;
+  }
+
+  if (integration.type === 'zapier') {
+    const webhookUrl = config?.webhookUrl;
+    if (!webhookUrl || typeof webhookUrl !== 'string') {
+      res.status(400).json({ error: 'config.webhookUrl is required for Zapier' });
+      return;
+    }
+    const trimmedUrl = webhookUrl.trim();
+    if (!isSafeWebhookUrl(trimmedUrl)) {
+      res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
+      return;
+    }
+    const secret = typeof config.secret === 'string' ? config.secret.trim() : undefined;
+    const configEncrypted = encryptZapierConfig(trimmedUrl, secret || undefined);
+    const updated = await prisma.integration.update({ where: { id }, data: { configEncrypted } });
+    res.json({ integration: toSafe(updated) });
+    return;
+  }
+
+  res.status(400).json({ error: 'Unsupported integration type for PUT' });
 });
 
 integrationsRouter.patch('/:id', ...adminMiddleware, async (req: Request, res: Response) => {
@@ -128,6 +156,14 @@ integrationsRouter.patch('/:id', ...adminMiddleware, async (req: Request, res: R
   let configEncrypted = integration.configEncrypted;
 
   if (config && integration.type === 'zapier') {
+    // Merge with existing config so partial updates work
+    let existingConfig: Record<string, string> = {};
+    if (integration.configEncrypted) {
+      try {
+        existingConfig = JSON.parse(decryptOrFallback(integration.configEncrypted));
+      } catch { /* use empty */ }
+    }
+
     const webhookUrl = config.webhookUrl;
     if (webhookUrl !== undefined) {
       if (typeof webhookUrl !== 'string') {
@@ -139,23 +175,22 @@ integrationsRouter.patch('/:id', ...adminMiddleware, async (req: Request, res: R
         res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
         return;
       }
-      configEncrypted = encrypt(JSON.stringify({ webhookUrl: trimmedUrl }));
+      existingConfig.webhookUrl = trimmedUrl;
     }
+
+    if (config.secret !== undefined) {
+      if (config.secret === null || config.secret === '') {
+        delete existingConfig.secret;
+      } else if (typeof config.secret === 'string') {
+        existingConfig.secret = config.secret.trim();
+      }
+    }
+
+    configEncrypted = encrypt(JSON.stringify(existingConfig));
   }
 
-  const updated = await prisma.integration.update({
-    where: { id },
-    data: { configEncrypted },
-  });
-
-  res.json({
-    integration: {
-      id: updated.id,
-      type: updated.type,
-      hasConfig: !!updated.configEncrypted,
-      createdAt: updated.createdAt,
-    },
-  });
+  const updated = await prisma.integration.update({ where: { id }, data: { configEncrypted } });
+  res.json({ integration: toSafe(updated) });
 });
 
 // POST /api/v1/integrations/:id/test - send test submission to webhook

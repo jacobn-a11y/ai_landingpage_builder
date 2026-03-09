@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 
 export function IntegrationsFeature() {
@@ -21,6 +22,8 @@ export function IntegrationsFeature() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -66,13 +69,17 @@ export function IntegrationsFeature() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remove this integration?')) return;
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleteLoading(true);
     try {
-      await api.integrations.delete(id);
+      await api.integrations.delete(deleteId);
+      setDeleteId(null);
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to delete');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -131,7 +138,7 @@ export function IntegrationsFeature() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleDelete(i.id)}
+                      onClick={() => setDeleteId(i.id)}
                     >
                       Remove
                     </Button>
@@ -168,6 +175,17 @@ export function IntegrationsFeature() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+        title="Remove integration"
+        description="Are you sure you want to remove this Zapier integration? Submissions will no longer be forwarded."
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={handleDelete}
+        loading={deleteLoading}
+      />
     </div>
   );
 }

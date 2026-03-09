@@ -18,9 +18,8 @@ import { integrationsRouter } from './modules/integrations/integrations.routes.j
 import { publishingRouter } from './modules/publishing/publishing.routes.js';
 import { serveRouter } from './modules/serve/serve.routes.js';
 import { libraryRouter } from './modules/library/library.routes.js';
-import { importRouter } from './modules/import/import.routes.js';
-import { assetsRouter } from './modules/assets/assets.routes.js';
 import { devBypassAuth } from './modules/auth/dev-bypass.js';
+import { csrfOriginCheck, csrfDoubleSubmit } from './middleware/csrf-protection.js';
 import './modules/auth/passport.config.js';
 
 const sessionSecret = process.env.SESSION_SECRET ?? 'dev-secret-change-in-production';
@@ -96,6 +95,11 @@ if (process.env.VITEST) {
   });
 }
 
+// CSRF protection: origin check + double-submit cookie (layers 2 & 3)
+// Layer 1 (SameSite cookies) is configured in the session setup above.
+app.use(csrfOriginCheck);
+app.use(csrfDoubleSubmit);
+
 app.use('/api/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/invites', invitesRouter);
@@ -110,8 +114,6 @@ app.use('/api/v1/submissions', submissionsRouter);
 app.use('/api/v1/serve', serveRouter);
 app.use('/api/v1/integrations', integrationsRouter);
 app.use('/api/v1/library', libraryRouter);
-app.use('/api/v1/import', importRouter);
-app.use('/api/v1/assets', assetsRouter);
 
 // Global error handler — catch unhandled async errors
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

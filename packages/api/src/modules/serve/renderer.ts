@@ -5,7 +5,7 @@
 
 import type { BaseBlock } from '@replica-pages/blocks';
 import { getUtmCaptureScript, getFormSubmitHandlerScript, getCountdownScript } from './utm-scripts.js';
-import { getFormInterceptionScript, type HookedFormBinding, type FormSuccessConfig } from './form-interception-script.js';
+import { getFormInterceptionScript, type HookedFormBinding } from './form-interception-script.js';
 import { sanitizeHtml, sanitizeCustomHtml } from '../../lib/sanitize-html.js';
 
 export interface PageContentJson {
@@ -180,23 +180,7 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       break;
     case 'customHtml': {
       const raw = replaceDynamicText(String(props.html ?? ''), ctx?.urlParams);
-      const importMeta = props._importMeta as { tier?: string; scopeId?: string } | undefined;
-      if (importMeta?.tier === 'A' || importMeta?.tier === 'B') {
-        // Tier A/B: render inside import-safe wrapper with scoped CSS
-        const scopeId = importMeta.scopeId ?? '';
-        const safeHtml = sanitizeCustomHtml(raw);
-        result = `<div data-import-scope="${escapeHtml(scopeId)}" class="import-safe-wrapper">${safeHtml}</div>`;
-      } else if (importMeta?.tier === 'C') {
-        // Tier C: render with full HTML payload wrapper (no freeform editing in published)
-        const safeHtml = sanitizeCustomHtml(raw);
-        result = `<div data-import-scope="${escapeHtml(importMeta.scopeId ?? '')}" class="import-safe-wrapper import-tier-c">${safeHtml}</div>`;
-      } else if (importMeta?.tier === 'D') {
-        // Tier D: locked render, already sanitized
-        result = sanitizeCustomHtml(raw);
-      } else {
-        // Non-imported customHtml
-        result = sanitizeCustomHtml(raw);
-      }
+      result = sanitizeCustomHtml(raw);
       break;
     }
     case 'video': {
@@ -449,13 +433,6 @@ export interface PopupData {
   delaySeconds?: number;
 }
 
-export interface ScopedStyleData {
-  fragmentId: string;
-  scopeId: string;
-  ownerBlockId: string;
-  cssText: string;
-}
-
 export interface RenderPageOptions {
   contentHtml: string;
   pageId: string;
@@ -469,13 +446,7 @@ export interface RenderPageOptions {
   pageSettings?: PageSettings | null;
   stickyBars?: StickyBarData[];
   popups?: PopupData[];
-  scopedStyles?: ScopedStyleData[];
-  /** Hooked form bindings for imported/external forms. */
   hookedFormBindings?: HookedFormBinding[];
-  /** Success config for hooked form submissions. */
-  formSuccessConfig?: FormSuccessConfig | null;
-  /** Per-request nonce for inline script tags (CSP nonce). */
-  nonce?: string | null;
 }
 
 function renderOverlayContent(blocks: Record<string, BaseBlock>, rootId: string): string {
@@ -497,7 +468,7 @@ function getStickyBarsHtml(bars: StickyBarData[]): string {
     .join('\n');
 }
 
-function getPopupsHtml(popups: PopupData[], nonceAttr = ''): string {
+function getPopupsHtml(popups: PopupData[]): string {
   if (!popups?.length) return '';
   const items = popups.map((p) => ({
     id: p.id,
@@ -542,23 +513,7 @@ function getPopupsHtml(popups: PopupData[], nonceAttr = ''): string {
   });
 })();
 `;
-  return popupMarkup + `\n<script${nonceAttr}>` + script + '</script>';
-}
-
-/** Build the <script> tag for hooked form interception (empty string if none). */
-function buildHookedFormScript(opts: RenderPageOptions): string {
-  const bindings = opts.hookedFormBindings;
-  if (!bindings || bindings.length === 0) return '';
-  const success: FormSuccessConfig = opts.formSuccessConfig ?? { behavior: 'inline' };
-  const script = getFormInterceptionScript({
-    pageId: opts.pageId,
-    pageName: opts.pageName,
-    pageSlug: opts.pageSlug,
-    bindings,
-    success,
-  });
-  const nonceAttr = opts.nonce ? ` nonce="${escapeHtml(opts.nonce)}"` : '';
-  return `<script${nonceAttr}>${script}</script>`;
+  return popupMarkup + '\n<script>' + script + '</script>';
 }
 
 export function renderFullPageHtml(opts: RenderPageOptions): string {
@@ -574,9 +529,8 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
     pageSettings,
     stickyBars,
     popups,
-    nonce,
+    hookedFormBindings,
   } = opts;
-  const nonceAttr = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
   const headerScripts = [globalHeaderScript ?? '', scripts?.header ?? '']
     .filter(Boolean)
     .join('\n');
@@ -592,12 +546,6 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   if (pageSettings?.fontFamily) bodyStyle.push(`font-family:${sanitizeCssValue(pageSettings.fontFamily)}`);
   const bodyStyleAttr = bodyStyle.length ? ` style="${escapeHtml(bodyStyle.join(';'))}"` : '';
 
-  // Build scoped CSS block for imported content
-  const scopedStyleTags = (opts.scopedStyles ?? [])
-    .sort((a, b) => a.fragmentId.localeCompare(b.fragmentId)) // deterministic ordering
-    .map((s) => `<style data-import-fragment="${escapeHtml(s.fragmentId)}">${s.cssText}</style>`)
-    .join('\n  ');
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -607,8 +555,7 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   ${metaDesc ? `<meta name="description" content="${escapeHtml(metaDesc)}" />` : ''}
   <meta property="og:title" content="${escapeHtml(ogTitle)}" />
   ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : ''}
-  ${scopedStyleTags}
-  <script${nonceAttr}>
+  <script>
     window.__REPLICA_PAGE__ = { pageId: "${escapeHtml(pageId)}", pageName: "${escapeHtml(pageName ?? '')}", pageSlug: "${escapeHtml(pageSlug)}", formActionUrl: "${escapeHtml(formActionUrl)}" };
   </script>
   ${headerScripts}
@@ -618,9 +565,9 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   <main class="min-h-screen">
     ${contentHtml}
   </main>
-  ${getPopupsHtml(popups ?? [], nonceAttr)}
-  <script${nonceAttr}>${getUtmCaptureScript()}</script>
-  <script${nonceAttr}>
+  ${getPopupsHtml(popups ?? [])}
+  <script>${getUtmCaptureScript()}</script>
+  <script>
     (function(){
       var cfg = window.__REPLICA_PAGE__ || {};
       var formAction = cfg.formActionUrl || '/api/v1/submissions';
@@ -631,9 +578,9 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
       });
     })();
   </script>
-  <script${nonceAttr}>${getFormSubmitHandlerScript()}</script>
-  <script${nonceAttr}>${getCountdownScript()}</script>
-  ${buildHookedFormScript(opts)}
+  <script>${getFormSubmitHandlerScript()}</script>
+  <script>${getCountdownScript()}</script>
+  ${hookedFormBindings?.length ? `<script>${getFormInterceptionScript(hookedFormBindings, pageId, formActionUrl)}</script>` : ''}
   ${footerScripts}
 </body>
 </html>`;

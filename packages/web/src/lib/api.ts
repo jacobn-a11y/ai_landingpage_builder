@@ -19,26 +19,6 @@ async function fetchApi<T>(
   return res.json();
 }
 
-/**
- * Fetch API with FormData (no Content-Type header; browser sets multipart boundary).
- */
-async function fetchApiFormData<T>(
-  path: string,
-  formData: FormData,
-): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-    // Do NOT set Content-Type — browser will set multipart boundary
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? 'Request failed');
-  }
-  return res.json();
-}
-
 export const api = {
   auth: {
     me: () => fetchApi<{ user: AuthUser | null }>('/auth/me'),
@@ -70,6 +50,11 @@ export const api = {
       fetchApi<InviteResponse>('/invites', {
         method: 'POST',
         body: JSON.stringify(data),
+      }),
+    accept: (token: string) =>
+      fetchApi<{ redirectUrl: string }>('/invites/accept', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
       }),
   },
   users: {
@@ -118,7 +103,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data ?? {}),
       }),
-    publish: (id: string, data: PublishRequest) =>
+    publish: (id: string, data: { targetType: 'demo' | 'custom'; domainId?: string; path?: string }) =>
       fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -129,11 +114,6 @@ export const api = {
       }),
     getPublishStatus: (id: string) =>
       fetchApi<{ publishStatus: PublishStatus }>(`/pages/${id}/publish-status`),
-    schedule: (id: string, data: ScheduleRequest) =>
-      fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/schedule`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
     updatePublishSchedule: (id: string, data: { publishAt?: string | null; unpublishAt?: string | null }) =>
       fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish-schedule`, {
         method: 'PATCH',
@@ -164,30 +144,54 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Domain>) =>
+    update: (id: string, data: Partial<{ embedPolicy: 'allow' | 'deny' | null; status?: string }>) =>
       fetchApi<{ domain: Domain }>(`/domains/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
-    updateSettings: (id: string, data: { embedPolicy?: 'allow' | 'deny' | null; custom404PageId?: string | null; securityHeaders?: SecurityHeaders | null }) =>
-      fetchApi<{ domain: Domain }>(`/domains/${id}`, {
-        method: 'PUT',
         body: JSON.stringify(data),
       }),
     verify: (id: string) =>
       fetchApi<{
         domain: Domain;
-        verification: { success: boolean; txtOk: boolean; cnameOk: boolean; hasConflictingA?: boolean };
+        verification: { success: boolean; txtOk: boolean; cnameOk: boolean; isCloudflare?: boolean };
       }>(`/domains/${id}/verify`, { method: 'POST' }),
     delete: (id: string) =>
       fetchApi<{ ok: boolean }>(`/domains/${id}`, { method: 'DELETE' }),
   },
   submissions: {
-    list: (pageId?: string) =>
-      fetchApi<{ submissions: Submission[] }>(
-        pageId ? `/submissions?pageId=${pageId}` : '/submissions'
-      ),
+    list: (pageId?: string, opts?: { page?: number; limit?: number; from?: string; to?: string }) => {
+      const params = new URLSearchParams();
+      if (pageId) params.set('pageId', pageId);
+      if (opts?.page) params.set('page', String(opts.page));
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      const qs = params.toString();
+      return fetchApi<{ submissions: Submission[]; total: number; page: number; limit: number }>(
+        `/submissions${qs ? `?${qs}` : ''}`
+      );
+    },
     get: (id: string) => fetchApi<{ submission: Submission }>(`/submissions/${id}`),
+    exportCsv: async (opts?: { pageId?: string; from?: string; to?: string }) => {
+      const params = new URLSearchParams();
+      if (opts?.pageId) params.set('pageId', opts.pageId);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      const qs = params.toString();
+      const res = await fetch(`${API_BASE}/submissions/export/csv${qs ? `?${qs}` : ''}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error((err as { error?: string }).error ?? 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `submissions-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   },
   integrations: {
     list: () => fetchApi<{ integrations: IntegrationListItem[] }>('/integrations'),
@@ -221,20 +225,6 @@ export const api = {
       fetchApi<{ ok: boolean }>(`/library/folders/${id}`, { method: 'DELETE' }),
     deleteItem: (id: string) =>
       fetchApi<{ ok: boolean }>(`/library/items/${id}`, { method: 'DELETE' }),
-  },
-  import: {
-    mhtml: (file: File, opts: { name?: string; slug?: string; folderId?: string; retainSource?: boolean; force?: boolean }) => {
-      const form = new FormData();
-      form.append('file', file);
-      if (opts.name) form.append('name', opts.name);
-      if (opts.slug) form.append('slug', opts.slug);
-      if (opts.folderId) form.append('folderId', opts.folderId);
-      if (opts.retainSource) form.append('retainSource', 'true');
-      if (opts.force) form.append('force', 'true');
-      return fetchApiFormData<ImportJobResponse>('/import/mhtml', form);
-    },
-    status: (jobId: string) => fetchApi<ImportJobStatus>(`/import/jobs/${jobId}`),
-    cancel: (jobId: string) => fetchApi<{ jobId: string; status: string }>(`/import/jobs/${jobId}`, { method: 'DELETE' }),
   },
   folders: {
     list: () => fetchApi<{ folders: FolderNode[] }>('/folders'),
@@ -307,42 +297,20 @@ export type FormSchemaConfig = {
   buttonStyle?: 'primary' | 'outline' | 'secondary';
 };
 
-export type PublishTargetType = 'demo' | 'custom' | 'webflow_subdomain';
-
 export type PublishStatus = {
   publishConfig: {
     domainId?: string;
-    targetType?: PublishTargetType;
+    targetType?: 'demo' | 'custom';
     path?: string;
     status?: 'draft' | 'published' | 'scheduled';
     publishAt?: string;
     unpublishAt?: string;
     isPublished?: boolean;
     publishedAt?: string;
-    webflowIntegrationId?: string;
-    webflowSubdomain?: string;
   };
   status: 'draft' | 'published' | 'scheduled';
   targetLabel: string;
   url?: string;
-};
-
-export type PublishRequest = {
-  targetType: PublishTargetType;
-  domainId?: string;
-  path?: string;
-  webflowIntegrationId?: string;
-  webflowSubdomain?: string;
-};
-
-export type ScheduleRequest = {
-  publishAt?: string;
-  unpublishAt?: string;
-  targetType?: PublishTargetType;
-  domainId?: string;
-  path?: string;
-  webflowIntegrationId?: string;
-  webflowSubdomain?: string;
 };
 
 export type PageScripts = {
@@ -409,11 +377,6 @@ export type Form = {
   version: number;
 };
 
-export type SecurityHeaders = {
-  hstsEnabled?: boolean;
-  xFrameOptions?: 'DENY' | 'SAMEORIGIN' | null;
-};
-
 export type Domain = {
   id: string;
   workspaceId: string;
@@ -425,9 +388,6 @@ export type Domain = {
   cnameTarget?: string | null;
   sslStatus?: string | null;
   embedPolicy?: string | null;
-  custom404PageId?: string | null;
-  securityHeaders?: SecurityHeaders | null;
-  redirects?: Array<{ from: string; to: string; status: number }> | null;
   createdAt: string;
 };
 
@@ -467,32 +427,4 @@ export type BlockLibraryFolder = {
   name: string;
   createdAt: string;
   items: BlockLibraryItem[];
-};
-
-export type ImportJobResponse = {
-  jobId: string;
-  status: string;
-};
-
-export type ImportJobStatus = {
-  jobId: string;
-  status: string;
-  stage?: string;
-  resultPageId?: string;
-  errorCode?: string;
-  errorMessage?: string;
-  stats?: {
-    sectionsDetected: number;
-    blocksCreated: number;
-    tierA: number;
-    tierB: number;
-    tierC: number;
-    tierD: number;
-    assetsExtracted: number;
-    warnings: string[];
-  };
-  sourceRetained: boolean;
-  schemaVersion: number;
-  createdAt: string;
-  updatedAt: string;
 };
