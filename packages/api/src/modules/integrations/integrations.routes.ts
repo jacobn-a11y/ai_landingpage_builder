@@ -3,7 +3,7 @@ import { prisma } from '../../shared/db.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 import { requireWorkspace } from '../workspace/workspace.middleware.js';
 import { INTEGRATION_TYPES } from './integrations.types.js';
-import { isSafeWebhookUrl } from '../../shared/validate-url.js';
+import { isSafeWebhookUrl, isSafeWebhookUrlStrict } from '../../shared/validate-url.js';
 import { encrypt, decryptOrFallback } from '../../shared/crypto.js';
 
 export const integrationsRouter = Router();
@@ -88,7 +88,7 @@ integrationsRouter.post('/', ...adminMiddleware, async (req: Request, res: Respo
       return;
     }
     const trimmedUrl = webhookUrl.trim();
-    if (!isSafeWebhookUrl(trimmedUrl)) {
+    if (!isSafeWebhookUrl(trimmedUrl) || !(await isSafeWebhookUrlStrict(trimmedUrl))) {
       res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
       return;
     }
@@ -125,7 +125,7 @@ integrationsRouter.put('/:id', ...adminMiddleware, async (req: Request, res: Res
       return;
     }
     const trimmedUrl = webhookUrl.trim();
-    if (!isSafeWebhookUrl(trimmedUrl)) {
+    if (!isSafeWebhookUrl(trimmedUrl) || !(await isSafeWebhookUrlStrict(trimmedUrl))) {
       res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
       return;
     }
@@ -171,7 +171,7 @@ integrationsRouter.patch('/:id', ...adminMiddleware, async (req: Request, res: R
         return;
       }
       const trimmedUrl = webhookUrl.trim();
-      if (!isSafeWebhookUrl(trimmedUrl)) {
+      if (!isSafeWebhookUrl(trimmedUrl) || !(await isSafeWebhookUrlStrict(trimmedUrl))) {
         res.status(400).json({ error: 'Webhook URL must be a public HTTP(S) URL' });
         return;
       }
@@ -227,7 +227,7 @@ integrationsRouter.post('/:id/test', ...adminMiddleware, async (req: Request, re
     return;
   }
 
-  if (!isSafeWebhookUrl(webhookUrl)) {
+  if (!isSafeWebhookUrl(webhookUrl) || !(await isSafeWebhookUrlStrict(webhookUrl))) {
     res.status(400).json({ error: 'Webhook URL targets a private network' });
     return;
   }

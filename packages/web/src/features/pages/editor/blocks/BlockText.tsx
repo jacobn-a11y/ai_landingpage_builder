@@ -98,8 +98,21 @@ export function BlockText({
     const url = prompt('Enter URL:');
     if (url) {
       try {
-        const parsed = new URL(url, window.location.origin);
-        if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return;
+        const raw = url.trim();
+        const normalized = raw.replace(/\s+/g, '').toLowerCase();
+        if (
+          normalized.startsWith('javascript:') ||
+          normalized.startsWith('vbscript:') ||
+          normalized.startsWith('data:text/html')
+        ) {
+          return;
+        }
+        if (raw.startsWith('#') || raw.startsWith('/') || raw.startsWith('./') || raw.startsWith('../')) {
+          document.execCommand('createLink', false, raw);
+          return;
+        }
+        const parsed = new URL(raw, window.location.origin);
+        if (!['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol)) return;
         document.execCommand('createLink', false, parsed.href);
       } catch {
         // Invalid URL — ignore

@@ -4,7 +4,7 @@ import type { PageFormBinding } from '@/lib/api';
 
 interface FormField {
   id: string;
-  type: 'text' | 'email' | 'phone' | 'textarea' | 'dropdown' | 'checkbox' | 'radio' | 'hidden' | 'number' | 'date';
+  type: 'text' | 'email' | 'phone' | 'textarea' | 'dropdown' | 'checkbox' | 'radio' | 'hidden' | 'number' | 'date' | 'file';
   label: string;
   placeholder?: string;
   required?: boolean;
@@ -62,6 +62,7 @@ export function BlockForm({
               className="w-full p-2 border rounded text-sm min-h-[80px] bg-background"
               placeholder={field.placeholder}
               disabled={editMode}
+              required={!editMode && !!field.required}
             />
           </div>
         );
@@ -69,8 +70,15 @@ export function BlockForm({
         return (
           <div key={field.id} className="mb-3">
             {labelEl}
-            <select className="w-full p-2 border rounded text-sm bg-background" disabled={editMode}>
-              <option value="">{field.placeholder ?? 'Select...'}</option>
+            <select
+              className="w-full p-2 border rounded text-sm bg-background"
+              disabled={editMode}
+              required={!editMode && !!field.required}
+              defaultValue=""
+            >
+              <option value="" disabled={!editMode && !!field.required}>
+                {field.placeholder ?? 'Select...'}
+              </option>
               {(field.options ?? []).map((opt, i) => (
                 <option key={i} value={opt}>{opt}</option>
               ))}
@@ -80,7 +88,7 @@ export function BlockForm({
       case 'checkbox':
         return (
           <div key={field.id} className="mb-3 flex items-center gap-2">
-            <input type="checkbox" disabled={editMode} className="rounded" />
+            <input type="checkbox" disabled={editMode} className="rounded" required={!editMode && !!field.required} />
             <label className="text-sm">{field.label}</label>
           </div>
         );
@@ -90,7 +98,7 @@ export function BlockForm({
             {labelEl}
             {(field.options ?? ['Option 1', 'Option 2']).map((opt, i) => (
               <label key={i} className="flex items-center gap-2 text-sm mb-1">
-                <input type="radio" name={field.id} disabled={editMode} />
+                <input type="radio" name={field.id} disabled={editMode} required={!editMode && !!field.required} />
                 {opt}
               </label>
             ))}
@@ -98,6 +106,18 @@ export function BlockForm({
         );
       case 'hidden':
         return null;
+      case 'file':
+        return (
+          <div key={field.id} className="mb-3">
+            {labelEl}
+            <input
+              type="file"
+              className="w-full p-2 border rounded text-sm bg-background"
+              disabled={editMode}
+              required={!editMode && !!field.required}
+            />
+          </div>
+        );
       default:
         return (
           <div key={field.id} className="mb-3">
@@ -107,6 +127,7 @@ export function BlockForm({
               className="w-full p-2 border rounded text-sm bg-background"
               placeholder={field.placeholder}
               disabled={editMode}
+              required={!editMode && !!field.required}
             />
           </div>
         );
@@ -133,9 +154,11 @@ export function BlockForm({
         {submitText}
       </button>
       {editMode && (
-        <p className="text-[10px] text-muted-foreground mt-2 text-center">
-          Configure fields in the properties panel
-        </p>
+        <div className="text-[10px] text-muted-foreground mt-2 text-center space-y-1">
+          <p>Configure fields in the properties panel</p>
+          {successMessage ? <p>Success: {successMessage}</p> : null}
+          {redirectUrl ? <p>Redirect: {redirectUrl}</p> : null}
+        </div>
       )}
     </div>
   );

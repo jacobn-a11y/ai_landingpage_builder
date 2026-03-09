@@ -9,15 +9,28 @@ import { ExternalLink, Loader2, Calendar, Globe } from 'lucide-react';
 import { useToast } from '@/contexts/ToastContext';
 import { PublishScheduleSection } from './PublishScheduleSection';
 import { PublishUrlDisplay } from './PublishUrlDisplay';
+import type { LaunchReadiness } from './editor/quality/launch-gates';
+import { editorRollout } from './editor/quality/rollout';
 
 interface PublishDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   page: Page;
   onPublished?: () => void;
+  blockingIssueCount?: number;
+  blockingIssues?: string[];
+  launchReadiness?: LaunchReadiness;
 }
 
-export function PublishDialog({ open, onOpenChange, page, onPublished }: PublishDialogProps) {
+export function PublishDialog({
+  open,
+  onOpenChange,
+  page,
+  onPublished,
+  blockingIssueCount = 0,
+  blockingIssues = [],
+  launchReadiness,
+}: PublishDialogProps) {
   const { showError, showSuccess } = useToast();
   const [status, setStatus] = useState<PublishStatus | null>(null);
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -150,7 +163,13 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
 
   const isPublished = status?.status === 'published';
   const isScheduled = status?.status === 'scheduled';
-  const publishDisabled = loading || (publishTarget === 'custom' && !domainId) || (publishTarget === 'webflow_subdomain' && !webflowSubdomain);
+  const qualityBlockingEnabled = editorRollout.enforceLaunchBlocking;
+  const publishDisabled =
+    loading ||
+    (qualityBlockingEnabled && blockingIssueCount > 0) ||
+    (qualityBlockingEnabled && !!launchReadiness && !launchReadiness.pass) ||
+    (publishTarget === 'custom' && !domainId) ||
+    (publishTarget === 'webflow_subdomain' && !webflowSubdomain);
 
   const targetLabel = publishTarget === 'demo' ? 'demo' : publishTarget === 'webflow_subdomain' ? 'Webflow' : 'domain';
 
@@ -268,6 +287,43 @@ export function PublishDialog({ open, onOpenChange, page, onPublished }: Publish
             onPublishAtChange={setSchedulePublishAt}
             onUnpublishAtChange={setScheduleUnpublishAt}
           />
+
+          {blockingIssueCount > 0 && (
+            <div className="rounded border border-rose-300 bg-rose-50 p-2 text-xs text-rose-700">
+              <p className="font-medium">
+                {blockingIssueCount} blocking quality issue(s) detected in the editor.
+                {qualityBlockingEnabled
+                  ? ' Resolve them before publishing.'
+                  : ' Publishing is currently allowed by rollout config, but fixing these is strongly recommended.'}
+              </p>
+              {blockingIssues.length > 0 && (
+                <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                  {blockingIssues.slice(0, 5).map((message, index) => (
+                    <li key={`${message}-${index}`}>{message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {launchReadiness && (
+            <div className="rounded border p-2 text-xs">
+              <p className="font-medium mb-1">Launch gates</p>
+              <div className="space-y-1">
+                {launchReadiness.gates.map((gate) => (
+                  <div key={gate.id} className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{gate.label}</p>
+                      <p className="text-muted-foreground">{gate.detail}</p>
+                    </div>
+                    <span className={gate.pass ? 'text-emerald-600' : gate.blocking ? 'text-rose-600' : 'text-amber-600'}>
+                      {gate.pass ? 'PASS' : gate.blocking ? 'BLOCK' : 'WARN'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

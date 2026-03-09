@@ -23,6 +23,7 @@ export function BlockToolbar() {
 
   const byCategory = BLOCK_DEFINITIONS.reduce(
     (acc, def) => {
+      if (def.visibleInToolbar === false) return acc;
       if (!acc[def.category]) acc[def.category] = [];
       acc[def.category].push(def);
       return acc;

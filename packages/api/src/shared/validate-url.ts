@@ -2,6 +2,41 @@
  * Validates a webhook URL is safe to fetch (not targeting private/internal networks).
  * Prevents SSRF attacks by blocking private IP ranges and non-HTTP(S) schemes.
  */
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+
+function isPrivateOrReservedIpv4(address: string): boolean {
+  const parts = address.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return false;
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  return false;
+}
+
+function isPrivateOrReservedIpv6(address: string): boolean {
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, '');
+  if (normalized === '::1' || normalized === '::') return true;
+  if (normalized.startsWith('fe80:')) return true; // Link-local
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // ULA
+  if (normalized.startsWith('::ffff:')) {
+    const mapped = normalized.slice('::ffff:'.length);
+    return isPrivateOrReservedIpv4(mapped);
+  }
+  return false;
+}
+
+function isPrivateOrReservedIp(address: string): boolean {
+  const version = isIP(address);
+  if (version === 4) return isPrivateOrReservedIpv4(address);
+  if (version === 6) return isPrivateOrReservedIpv6(address);
+  return false;
+}
+
 export function isSafeWebhookUrl(urlString: string): boolean {
   let parsed: URL;
   try {
@@ -21,16 +56,8 @@ export function isSafeWebhookUrl(urlString: string): boolean {
     return false;
   }
 
-  // Block private IP ranges
-  const parts = hostname.split('.').map(Number);
-  if (parts.length === 4 && parts.every((p) => !isNaN(p) && p >= 0 && p <= 255)) {
-    const [a, b] = parts;
-    if (a === 10) return false;                          // 10.0.0.0/8
-    if (a === 172 && b >= 16 && b <= 31) return false;   // 172.16.0.0/12
-    if (a === 192 && b === 168) return false;             // 192.168.0.0/16
-    if (a === 169 && b === 254) return false;             // 169.254.0.0/16 (link-local)
-    if (a === 0) return false;                            // 0.0.0.0/8
-    if (a === 127) return false;                          // 127.0.0.0/8
+  if (isPrivateOrReservedIp(hostname)) {
+    return false;
   }
 
   // Block metadata endpoints (cloud providers)
@@ -39,4 +66,32 @@ export function isSafeWebhookUrl(urlString: string): boolean {
   }
 
   return true;
+}
+
+/**
+ * Strict URL validation for webhook delivery.
+ * Includes DNS lookup checks to prevent hostnames resolving to private/internal IPs.
+ */
+export async function isSafeWebhookUrlStrict(urlString: string): Promise<boolean> {
+  if (!isSafeWebhookUrl(urlString)) return false;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return false;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (isIP(host)) {
+    return !isPrivateOrReservedIp(host);
+  }
+
+  try {
+    const records = await lookup(host, { all: true, verbatim: true });
+    if (!records.length) return false;
+    return records.every((record) => !isPrivateOrReservedIp(record.address));
+  } catch {
+    return false;
+  }
 }

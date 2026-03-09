@@ -26,7 +26,7 @@ export const BLOCK_TEMPLATES: BlockTemplate[] = [
         root: h,
         blocks: {
           [h]: { id: h, type: 'hero', children: [t, b] },
-          [t]: { id: t, type: 'text', props: { content: 'Your headline here' } },
+          [t]: { id: t, type: 'headline', props: { content: 'Your headline here', headingLevel: 'h1' } },
           [b]: { id: b, type: 'button', props: { text: 'Get Started', href: '#' } },
         },
       };
@@ -51,9 +51,9 @@ export const BLOCK_TEMPLATES: BlockTemplate[] = [
           [c1]: { id: c1, type: 'container', children: [t1] },
           [c2]: { id: c2, type: 'container', children: [t2] },
           [c3]: { id: c3, type: 'container', children: [t3] },
-          [t1]: { id: t1, type: 'text', props: { content: 'Feature 1' } },
-          [t2]: { id: t2, type: 'text', props: { content: 'Feature 2' } },
-          [t3]: { id: t3, type: 'text', props: { content: 'Feature 3' } },
+          [t1]: { id: t1, type: 'paragraph', props: { content: 'Feature 1' } },
+          [t2]: { id: t2, type: 'paragraph', props: { content: 'Feature 2' } },
+          [t3]: { id: t3, type: 'paragraph', props: { content: 'Feature 3' } },
         },
       };
     })(),
@@ -70,7 +70,7 @@ export const BLOCK_TEMPLATES: BlockTemplate[] = [
         root: s,
         blocks: {
           [s]: { id: s, type: 'section', children: [t, b] },
-          [t]: { id: t, type: 'text', props: { content: 'Ready to get started?' } },
+          [t]: { id: t, type: 'headline', props: { content: 'Ready to get started?', headingLevel: 'h2' } },
           [b]: { id: b, type: 'button', props: { text: 'Sign up now', href: '#' } },
         },
       };

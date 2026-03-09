@@ -9,6 +9,8 @@ interface BlockImageProps {
   linkNewTab?: boolean;
   objectFit?: string;
   lazyLoad?: boolean;
+  borderRadius?: number;
+  opacity?: number;
   editMode: boolean;
   className?: string;
 }
@@ -21,6 +23,8 @@ export function BlockImage({
   linkNewTab,
   objectFit = 'contain',
   lazyLoad = true,
+  borderRadius = 0,
+  opacity = 100,
   editMode,
   className,
 }: BlockImageProps) {
@@ -29,6 +33,8 @@ export function BlockImage({
 
   const imgStyle: React.CSSProperties = {
     objectFit: objectFit as React.CSSProperties['objectFit'],
+    ...(typeof borderRadius === 'number' ? { borderRadius } : {}),
+    ...(typeof opacity === 'number' ? { opacity: Math.max(0, Math.min(100, opacity)) / 100 } : {}),
   };
 
   if (editMode) {

@@ -4,6 +4,7 @@ import { requireAuth, requireMinRole } from '../auth/auth.middleware.js';
 import { requireWorkspace } from '../workspace/workspace.middleware.js';
 import { detectForms, suggestCanonicalField } from './pages.forms.js';
 import { slugify, generateUniqueSlug } from '../../shared/slugify.js';
+import { normalizePageDocument } from '@replica-pages/blocks';
 
 export const pagesRouter = Router();
 
@@ -36,6 +37,7 @@ pagesRouter.post('/', ...writeMiddleware, async (req: Request, res: Response) =>
   }
 
   const pageSlug = slug ? slugify(slug) || 'page' : slugify(trimmed) || 'page';
+  const normalizedContentJson = normalizePageDocument(contentJson ?? {});
 
   const page = await prisma.$transaction(async (tx) => {
     const existingSlugs = (
@@ -53,7 +55,7 @@ pagesRouter.post('/', ...writeMiddleware, async (req: Request, res: Response) =>
         name: trimmed,
         slug: uniqueSlug,
         folderId: folderId || null,
-        contentJson: contentJson ?? {},
+        contentJson: normalizedContentJson,
         scripts: scripts ?? {},
         publishConfig: publishConfig ?? {},
         scheduleConfig: scheduleConfig ?? {},
@@ -200,8 +202,8 @@ pagesRouter.patch('/:id', ...writeMiddleware, async (req: Request, res: Response
       updates.folderId = folderId;
     }
   }
-  if (contentJson !== undefined) updates.contentJson = contentJson;
-  if (lastPublishedContentJson !== undefined) updates.lastPublishedContentJson = lastPublishedContentJson;
+  if (contentJson !== undefined) updates.contentJson = normalizePageDocument(contentJson);
+  if (lastPublishedContentJson !== undefined) updates.lastPublishedContentJson = normalizePageDocument(lastPublishedContentJson);
   if (scripts !== undefined) updates.scripts = scripts;
   if (publishConfig !== undefined) updates.publishConfig = publishConfig;
   if (scheduleConfig !== undefined) updates.scheduleConfig = scheduleConfig;
@@ -307,8 +309,8 @@ pagesRouter.post('/:id/clone', ...writeMiddleware, async (req: Request, res: Res
         name: baseName,
         slug: uniqueSlug,
         folderId: source.folderId,
-        contentJson: (source.contentJson ?? {}) as object,
-        lastPublishedContentJson: (source.lastPublishedContentJson ?? {}) as object,
+        contentJson: normalizePageDocument((source.contentJson ?? {}) as object),
+        lastPublishedContentJson: normalizePageDocument((source.lastPublishedContentJson ?? {}) as object),
         scripts: (source.scripts ?? {}) as object,
         publishConfig: {},
         scheduleConfig: {},

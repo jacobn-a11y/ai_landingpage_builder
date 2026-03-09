@@ -1,12 +1,32 @@
-/**
- * Server-side HTML sanitizer for rich text. Allows only safe inline formatting tags.
- * No DOM - uses regex for Node.js compatibility.
- *
- * Uses a strict whitelist approach: all non-allowed tags are stripped,
- * all event handlers and dangerous URI schemes are removed.
- */
+import { parseHTML } from 'linkedom';
 
-const ALLOWED_TAGS = new Set(['b', 'i', 'u', 'strong', 'em', 'a', 'br']);
+const ALLOWED_RICH_TAGS = new Set([
+  'a',
+  'b',
+  'br',
+  'code',
+  'em',
+  'i',
+  'li',
+  'ol',
+  'p',
+  'pre',
+  'strong',
+  'u',
+  'ul',
+]);
+
+const BLOCKED_CUSTOM_TAGS = new Set(['script', 'style', 'object', 'embed', 'base', 'meta', 'link', 'srcdoc']);
+const URL_ATTRS = new Set(['href', 'src', 'srcset', 'poster', 'action', 'formaction', 'data', 'background', 'xlink:href']);
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+
+function escapeText(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function escapeAttr(s: string): string {
   return s
@@ -17,76 +37,126 @@ function escapeAttr(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
-function escapeText(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function stripControlChars(value: string): string {
+  return value.replace(/[\u0000-\u001F\u007F]/g, '').trim();
 }
 
-/** Strip dangerous tags/attrs, allow only b,i,u,strong,em,a,br. Sanitize href on <a>. */
-export function sanitizeHtml(html: string): string {
-  if (!html?.trim()) return '';
-  // Remove dangerous tags including their content
-  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
-  out = out.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '');
-  out = out.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, '');
-  out = out.replace(/<object\b[^>]*>[\s\S]*?<\/object\s*>/gi, '');
-  out = out.replace(/<embed\b[^>]*\/?>/gi, '');
-  out = out.replace(/<base\b[^>]*\/?>/gi, '');
-  out = out.replace(/<form\b[^>]*>[\s\S]*?<\/form\s*>/gi, '');
-  out = out.replace(/<meta\b[^>]*\/?>/gi, '');
-  out = out.replace(/<link\b[^>]*\/?>/gi, '');
-  // Remove all event handlers (handle unquoted values too)
-  out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-  // Remove dangerous URI schemes anywhere in attributes
-  out = out.replace(/javascript\s*:/gi, '#blocked:');
-  out = out.replace(/vbscript\s*:/gi, '#blocked:');
-  out = out.replace(/data\s*:\s*text\/html/gi, '#blocked:');
-  // Process allowed tags: b, i, u, strong, em, br, a
-  out = out.replace(/<(br)\s*\/?>/gi, '<br>');
-  out = out.replace(/<\/(b|i|u|strong|em)>/gi, (_, tag) => `</${tag}>`);
-  out = out.replace(/<(b|i|u|strong|em)(\s[^>]*)?>/gi, (_, tag) => `<${tag}>`);
-  out = out.replace(/<a\s+([^>]*)>/gi, (_, attrs) => {
-    const hrefM = attrs.match(/href\s*=\s*["']([^"']*)["']/i);
-    let href = hrefM ? hrefM[1].trim() : '#';
-    if (!/^(https?:|mailto:|#)/i.test(href)) href = '#';
-    return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">`;
-  });
-  out = out.replace(/<\/a>/gi, '</a>');
-  // Remove any remaining non-allowed tags
-  out = out.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\/?>/g, (m, tag) => {
-    if (ALLOWED_TAGS.has(tag.toLowerCase())) return m;
+function isDangerousUrl(value: string): boolean {
+  const normalized = value.replace(/\s+/g, '').toLowerCase();
+  return (
+    normalized.startsWith('javascript:') ||
+    normalized.startsWith('vbscript:') ||
+    normalized.startsWith('data:text/html')
+  );
+}
+
+function sanitizeUrlAttribute(name: string, rawValue: string): string | null {
+  const value = stripControlChars(rawValue);
+  if (!value || isDangerousUrl(value)) return null;
+
+  if (name === 'srcset') {
+    const safeParts = value
+      .split(',')
+      .map((item) => item.trim())
+      .map((item) => {
+        const [url, descriptor] = item.split(/\s+/, 2);
+        if (!url || isDangerousUrl(url)) return null;
+        return descriptor ? `${url} ${descriptor}` : url;
+      })
+      .filter((item): item is string => Boolean(item));
+    return safeParts.length ? safeParts.join(', ') : null;
+  }
+
+  if (/^(https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(value)) return value;
+  if (/^data:image\//i.test(value) && (name === 'src' || name === 'srcset' || name === 'poster')) return value;
+  return null;
+}
+
+function sanitizeStyleAttribute(value: string): string | null {
+  const cleaned = stripControlChars(value);
+  if (!cleaned) return null;
+  if (/(expression\s*\(|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html)/i.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
+}
+
+function sanitizeNode(node: any, mode: 'rich' | 'custom'): string {
+  if (!node) return '';
+  if (node.nodeType === 3) {
+    return escapeText(String(node.textContent ?? ''));
+  }
+  if (node.nodeType !== 1) return '';
+
+  const tag = String(node.nodeName ?? '').toLowerCase();
+  if (!tag) return '';
+
+  if (mode === 'rich' && !ALLOWED_RICH_TAGS.has(tag)) {
+    return Array.from(node.childNodes ?? []).map((child) => sanitizeNode(child, mode)).join('');
+  }
+
+  if (mode === 'custom' && BLOCKED_CUSTOM_TAGS.has(tag)) {
     return '';
-  });
-  return out;
+  }
+
+  const attrs: string[] = [];
+  if (mode === 'rich') {
+    if (tag === 'a') {
+      const href = sanitizeUrlAttribute('href', String(node.getAttribute('href') ?? '')) ?? '#';
+      attrs.push(`href="${escapeAttr(href)}"`);
+      attrs.push('target="_blank" rel="noopener noreferrer"');
+    }
+  } else {
+    const rawAttrs = Array.from(node.attributes ?? []) as Array<{ name: string; value: string }>;
+    rawAttrs.forEach((attr) => {
+      const name = String(attr.name ?? '').toLowerCase();
+      if (!name || name.startsWith('on') || name === 'srcdoc') return;
+
+      if (URL_ATTRS.has(name)) {
+        const safe = sanitizeUrlAttribute(name, String(attr.value ?? ''));
+        if (!safe) return;
+        attrs.push(`${name}="${escapeAttr(safe)}"`);
+        return;
+      }
+
+      if (name === 'style') {
+        const safeStyle = sanitizeStyleAttribute(String(attr.value ?? ''));
+        if (safeStyle) attrs.push(`style="${escapeAttr(safeStyle)}"`);
+        return;
+      }
+
+      attrs.push(`${name}="${escapeAttr(stripControlChars(String(attr.value ?? '')))}"`);
+    });
+
+    if (tag === 'a' && String(node.getAttribute('target') ?? '').toLowerCase() === '_blank') {
+      attrs.push('rel="noopener noreferrer"');
+    }
+    if (tag === 'iframe' && !attrs.some((a) => a.startsWith('sandbox='))) {
+      attrs.push('sandbox="allow-scripts allow-same-origin allow-popups allow-forms"');
+    }
+  }
+
+  const attrStr = attrs.length ? ` ${attrs.join(' ')}` : '';
+  if (VOID_TAGS.has(tag)) {
+    return `<${tag}${attrStr}>`;
+  }
+  const inner = Array.from(node.childNodes ?? []).map((child) => sanitizeNode(child, mode)).join('');
+  return `<${tag}${attrStr}>${inner}</${tag}>`;
 }
 
-/**
- * Sanitize custom HTML blocks: strip script, style, event handlers, javascript: URLs.
- * Allows structural HTML (div, table, iframe with safe src, etc.) for embeds and layouts.
- */
-export function sanitizeCustomHtml(html: string): string {
+function sanitizeWithParser(html: string, mode: 'rich' | 'custom'): string {
   if (!html?.trim()) return '';
-  let out = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')
-    .replace(/<base\b[^>]*\/?>/gi, '')
-    .replace(/<meta\b[^>]*\/?>/gi, '')
-    .replace(/<link\b[^>]*\/?>/gi, '')
-    .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/javascript\s*:/gi, '#blocked:')
-    .replace(/vbscript\s*:/gi, '#blocked:');
-  out = out.replace(/href\s*=\s*["']([^"']*)["']/gi, (_, url) => {
-    const u = url.trim();
-    if (/^(javascript|vbscript|data\s*:\s*text\/html)/i.test(u)) return 'href="#"';
-    return `href="${escapeAttr(u)}"`;
-  });
-  out = out.replace(/src\s*=\s*["']([^"']*)["']/gi, (_, url) => {
-    const u = url.trim();
-    if (/^(javascript|vbscript|data\s*:\s*text\/html)/i.test(u)) return '';
-    return `src="${escapeAttr(u)}"`;
-  });
-  return out;
+  const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`);
+  const body = (document as any).body;
+  return Array.from(body?.childNodes ?? []).map((node) => sanitizeNode(node, mode)).join('');
+}
+
+/** Strip dangerous tags/attrs for rich text. */
+export function sanitizeHtml(html: string): string {
+  return sanitizeWithParser(html, 'rich');
+}
+
+/** Sanitize custom HTML while preserving structural markup. */
+export function sanitizeCustomHtml(html: string): string {
+  return sanitizeWithParser(html, 'custom');
 }

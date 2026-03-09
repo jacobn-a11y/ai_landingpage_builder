@@ -11,7 +11,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import useUndo from 'use-undo';
 import { api } from '@/lib/api';
 import type { Page, PageScripts } from '@/lib/api';
 import { useToast } from '@/contexts/ToastContext';
@@ -25,24 +24,29 @@ import {
   toEditorContentJson,
   toPageContentJson,
   type Breakpoint,
-  BREAKPOINT_WIDTHS,
 } from './types';
 import { isContainerBlock } from './block-registry';
 import { loadGoogleFonts } from './google-fonts';
+import { useViewportState } from './state/use-viewport-state';
+import { useSelectionState } from './state/use-selection-state';
+import { useMutationLog, type EditorMutationRecord } from './state/use-mutation-log';
+import { useContentHistoryState } from './state/use-content-history-state';
+import { useEditorAutosave } from './state/use-editor-autosave';
 
 function generateBlockId(): string {
   return `b_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
 export function createEmptyBlock(type: string, props?: Record<string, unknown>): EditorBlock {
+  const normalizedType = type === 'text' ? 'paragraph' : type;
   const id = generateBlockId();
   const block: EditorBlock = {
     id,
-    type: type as EditorBlock['type'],
+    type: normalizedType as EditorBlock['type'],
     props: props ?? {},
     meta: {},
   };
-  if (isContainerBlock(type as EditorBlock['type'])) {
+  if (isContainerBlock(normalizedType as EditorBlock['type'])) {
     block.children = [];
   }
   return block;
@@ -59,6 +63,7 @@ export interface EditorContextValue {
   insertBlockFromLibrary: (blockJson: object, parentId: string | null, index?: number) => string;
   updateBlock: (id: string, updates: Partial<EditorBlock>) => void;
   removeBlock: (id: string) => void;
+  removeBlocks: (ids: string[]) => void;
   moveBlock: (id: string, parentId: string | null, index: number) => void;
   undo: () => void;
   redo: () => void;
@@ -68,6 +73,7 @@ export interface EditorContextValue {
   setPreviewMode: (v: boolean) => void;
   breakpoint: Breakpoint;
   setBreakpoint: (b: Breakpoint) => void;
+  autoStackMobileLayout: () => void;
   canvasWidth: number;
   setCanvasWidth: (w: number) => void;
   dirty: boolean;
@@ -88,7 +94,11 @@ export interface EditorContextValue {
   copyBlocks: () => void;
   pasteBlocks: (parentId: string | null, index?: number) => string[] | null;
   groupBlocks: () => string | null;
+  ungroupBlock: () => string[] | null;
   alignBlocks: (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => void;
+  distributeBlocks: (axis: 'horizontal' | 'vertical') => void;
+  centerBlocksInCanvas: (axis: 'horizontal' | 'vertical') => void;
+  tidyVerticalSpacing: () => void;
   updateBlocksZIndex: (delta: number) => void;
   stickyBars: StickyBar[];
   popups: Popup[];
@@ -103,6 +113,7 @@ export interface EditorContextValue {
   scopedStyles: Record<string, string>;
   updateScopedStyle: (scopeId: string, cssText: string) => void;
   deleteScopedStyle: (scopeId: string) => void;
+  mutationLog: EditorMutationRecord[];
 }
 
 const EditorContext = createContext<EditorContextValue | null>(null);
@@ -112,8 +123,6 @@ export function useEditor() {
   if (!ctx) throw new Error('useEditor must be used within EditorProvider');
   return ctx;
 }
-
-const AUTOSAVE_DEBOUNCE_MS = 5000;
 
 export function EditorProvider({
   page,
@@ -128,24 +137,31 @@ export function EditorProvider({
     () => toEditorContentJson(page.contentJson ?? null),
     [page.id]
   );
-
-  const [state, { set: setState, undo, redo, canUndo, canRedo }] = useUndo(
-    initialContent
-  );
-
-  const content = state.present;
-  const [selectedBlockIds, setSelectedBlockIdsState] = useState<string[]>([]);
-  const selectedBlockId = selectedBlockIds[0] ?? null;
-  const setSelectedBlockId = useCallback((id: string | null) => {
-    setSelectedBlockIdsState(id ? [id] : []);
-  }, []);
+  const { mutationLog, recordMutation } = useMutationLog();
+  const {
+    content,
+    setContent,
+    replaceContent,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useContentHistoryState({
+    initialContent,
+    pageId,
+    recordMutation,
+  });
+  const {
+    selectedBlockIds,
+    selectedBlockId,
+    setSelectedBlockIds,
+    setSelectedBlockId,
+    toggleBlockSelection,
+    handleBlockClick,
+    clearSelection,
+  } = useSelectionState();
   const clipboardRef = useRef<{ blocks: Record<string, EditorBlock>; ids: string[] } | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
-  const [breakpoint, setBreakpoint] = useState<Breakpoint>('desktop');
-  const [canvasWidth, setCanvasWidth] = useState(BREAKPOINT_WIDTHS.desktop);
-  useEffect(() => {
-    setCanvasWidth(BREAKPOINT_WIDTHS[breakpoint]);
-  }, [breakpoint]);
+  const { previewMode, setPreviewMode, breakpoint, setBreakpoint, canvasWidth, setCanvasWidth } = useViewportState();
   // Load Google Fonts used in all blocks on page load
   useEffect(() => {
     const fonts = new Set<string>();
@@ -170,82 +186,80 @@ export function EditorProvider({
       return next;
     });
   }, []);
-
-  const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedContentRef = useRef<string>(JSON.stringify(initialContent));
   const initialScripts = useMemo(
     () => ({ header: '', footer: '', ...(page.scripts as PageScripts) }),
     [page.id]
   );
-  const [scripts, setScripts] = useState<PageScripts>(initialScripts);
-  const lastSavedScriptsRef = useRef<string>(JSON.stringify(initialScripts));
+  const {
+    dirty,
+    saving,
+    lastSaved,
+    scripts,
+    updateScripts,
+    markContentSaved,
+  } = useEditorAutosave({
+    pageId,
+    content,
+    initialContent,
+    initialScripts,
+    onSaveError: showError,
+    recordMutation,
+  });
 
-  const updateScripts = useCallback((updates: Partial<PageScripts>) => {
-    setScripts((prev) => ({ ...prev, ...updates }));
-  }, []);
-
-  const setContent = useCallback(
-    (updater: EditorContentJson | ((prev: EditorContentJson) => EditorContentJson)) => {
-      setState(
-        typeof updater === 'function'
-          ? updater(state.present)
-          : updater
-      );
-    },
-    [setState, state.present]
-  );
-
-  const contentDirty = useMemo(() => {
-    const current = JSON.stringify(content);
-    return current !== lastSavedContentRef.current;
-  }, [content]);
-
-  const scriptsDirty = useMemo(() => {
-    const current = JSON.stringify(scripts);
-    return current !== lastSavedScriptsRef.current;
-  }, [scripts]);
-
-  const dirty = contentDirty || scriptsDirty;
-
-  const save = useCallback(async () => {
-    if (!contentDirty && !scriptsDirty) return;
-    setSaving(true);
-    try {
-      const payload: { contentJson?: object; scripts?: PageScripts } = {};
-      if (contentDirty) {
-        payload.contentJson = toPageContentJson(content);
-        lastSavedContentRef.current = JSON.stringify(content);
-      }
-      if (scriptsDirty) {
-        payload.scripts = scripts;
-        lastSavedScriptsRef.current = JSON.stringify(scripts);
-      }
-      await api.pages.update(pageId, payload);
-      setLastSaved(new Date());
-    } catch (e) {
-      showError(e instanceof Error ? e.message : 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
-  }, [pageId, content, scripts, contentDirty, scriptsDirty]);
-
-  useEffect(() => {
-    if (!dirty) return;
-    const t = setTimeout(() => {
-      save();
-    }, AUTOSAVE_DEBOUNCE_MS);
-    saveTimeoutRef.current = t;
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [content, scripts, dirty, save]);
+  const autoStackMobileLayout = useCallback(() => {
+    setContent((prev) => {
+      if (!prev.root || !prev.blocks[prev.root]) return prev;
+      const rootBlock = prev.blocks[prev.root];
+      const childIds = rootBlock.children ?? [];
+      let y = 16;
+      const blocks = { ...prev.blocks };
+      childIds.forEach((id) => {
+        const block = blocks[id];
+        if (!block) return;
+        const props = (block.props ?? {}) as Record<string, unknown>;
+        const overrides = (props.overrides as Record<string, Record<string, unknown>> | undefined) ?? {};
+        const estimatedHeight = typeof props.height === 'number' ? props.height : 120;
+        const mobile = {
+          ...(overrides.mobile ?? {}),
+          x: 16,
+          y,
+          width: 343,
+          hidden: false,
+        };
+        y += Math.max(estimatedHeight, 72) + 16;
+        blocks[id] = {
+          ...block,
+          props: {
+            ...props,
+            overrides: {
+              ...overrides,
+              mobile,
+            },
+          },
+        };
+      });
+      return { ...prev, blocks };
+    });
+    recordMutation('auto_stack_mobile_layout');
+  }, [setContent, recordMutation]);
 
   const insertBlock = useCallback(
     (type: string, parentId: string | null, index?: number): string => {
       const layoutMode = content.layoutMode ?? 'fluid';
       let block = createEmptyBlock(type);
+      const pageSettings = content.pageSettings ?? {};
+      const props = { ...(block.props ?? {}) } as Record<string, unknown>;
+      if (type === 'headline') {
+        if (typeof pageSettings.headlineFontFamily === 'string' && !props.fontFamily) props.fontFamily = pageSettings.headlineFontFamily;
+        if (typeof pageSettings.headlineFontWeight === 'string' && !props.fontWeight) props.fontWeight = pageSettings.headlineFontWeight;
+      } else if (type === 'paragraph') {
+        if (typeof pageSettings.paragraphFontFamily === 'string' && !props.fontFamily) props.fontFamily = pageSettings.paragraphFontFamily;
+        if (typeof pageSettings.paragraphFontWeight === 'string' && !props.fontWeight) props.fontWeight = pageSettings.paragraphFontWeight;
+      } else if (type === 'button') {
+        if (typeof pageSettings.buttonFontFamily === 'string' && !props.fontFamily) props.fontFamily = pageSettings.buttonFontFamily;
+        if (typeof pageSettings.buttonFontWeight === 'string' && !props.fontWeight) props.fontWeight = pageSettings.buttonFontWeight;
+      }
+      block = { ...block, props };
       if (layoutMode === 'canvas' && (parentId === content.root || !parentId)) {
         const rootBlock = content.root ? content.blocks[content.root] : null;
         const siblingIds = rootBlock?.children ?? [];
@@ -274,6 +288,7 @@ export function EditorProvider({
       if (!targetParentId) {
         root = block.id;
         setContent({ ...content, root, blocks });
+        recordMutation('insert_block', [block.id]);
         return block.id;
       }
 
@@ -281,6 +296,7 @@ export function EditorProvider({
       if (!parent) {
         if (!root) root = block.id;
         setContent({ ...content, root, blocks });
+        recordMutation('insert_block', [block.id]);
         return block.id;
       }
 
@@ -291,9 +307,10 @@ export function EditorProvider({
 
       if (!root) root = targetParentId;
       setContent({ ...content, root, blocks });
+      recordMutation('insert_block', [block.id]);
       return block.id;
     },
-    [content, setContent]
+    [content, setContent, recordMutation]
   );
 
   const insertBlockFromLibrary = useCallback(
@@ -336,13 +353,15 @@ export function EditorProvider({
       const targetParentId = parentId ?? root;
       if (!targetParentId) {
         root = rootBlockId;
-        setContent({ root, blocks });
+        setContent({ ...content, root, blocks });
+        recordMutation('insert_block_from_library', [rootBlockId]);
         return rootBlockId;
       }
       const parent = blocks[targetParentId];
       if (!parent) {
         if (!root) root = rootBlockId;
-        setContent({ root, blocks });
+        setContent({ ...content, root, blocks });
+        recordMutation('insert_block_from_library', [rootBlockId]);
         return rootBlockId;
       }
       const childIds = parent.children ?? [];
@@ -350,10 +369,11 @@ export function EditorProvider({
       const next = [...childIds.slice(0, i), rootBlockId, ...childIds.slice(i)];
       blocks[targetParentId] = { ...parent, children: next };
       if (!root) root = targetParentId;
-      setContent({ root, blocks });
+      setContent({ ...content, root, blocks });
+      recordMutation('insert_block_from_library', [rootBlockId]);
       return rootBlockId;
     },
-    [content, setContent]
+    [content, setContent, recordMutation]
   );
 
   const updateBlock = useCallback(
@@ -365,40 +385,54 @@ export function EditorProvider({
         [id]: { ...block, ...updates },
       };
       setContent({ ...content, blocks: next });
+      recordMutation('update_block', [id]);
     },
-    [content, setContent]
+    [content, setContent, recordMutation]
+  );
+
+  const removeBlocks = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      const toRemove = new Set(ids);
+      const blocks = { ...content.blocks };
+
+      const collectDescendants = (bid: string) => {
+        const block = blocks[bid];
+        if (!block?.children?.length) return;
+        block.children.forEach((childId) => {
+          toRemove.add(childId);
+          collectDescendants(childId);
+        });
+      };
+      ids.forEach(collectDescendants);
+
+      toRemove.forEach((bid) => delete blocks[bid]);
+
+      Object.keys(blocks).forEach((parentId) => {
+        const parent = blocks[parentId];
+        if (!parent?.children?.length) return;
+        const nextChildren = parent.children.filter((childId) => !toRemove.has(childId) && !!blocks[childId]);
+        blocks[parentId] = { ...parent, children: nextChildren };
+      });
+
+      let root = content.root;
+      if (!root || toRemove.has(root) || !blocks[root]) {
+        root = Object.keys(blocks)[0] ?? '';
+      }
+
+      setContent({ ...content, root, blocks });
+      setSelectedBlockIds(selectedBlockIds.filter((id) => !toRemove.has(id)));
+      recordMutation('remove_blocks', [...toRemove]);
+    },
+    [content, setContent, recordMutation, selectedBlockIds, setSelectedBlockIds]
   );
 
   const removeBlock = useCallback(
     (id: string) => {
-      const blocks = { ...content.blocks };
-      delete blocks[id];
-      const visit = (bid: string) => {
-        const b = blocks[bid];
-        if (b?.children) {
-          b.children.forEach(visit);
-          delete blocks[bid];
-        }
-      };
-      visit(id);
-      const updateParent = (parentId: string) => {
-        const p = blocks[parentId];
-        if (p?.children) {
-          blocks[parentId] = {
-            ...p,
-            children: p.children.filter((c: string) => c !== id && blocks[c]),
-          };
-        }
-      };
-      Object.keys(blocks).forEach(updateParent);
-      let root = content.root;
-      if (root === id) {
-        root = Object.keys(blocks)[0] ?? '';
-      }
-      setContent({ root, blocks });
+      removeBlocks([id]);
       if (selectedBlockId === id) setSelectedBlockId(null);
     },
-    [content, setContent, selectedBlockId]
+    [removeBlocks, selectedBlockId, setSelectedBlockId]
   );
 
   const moveBlock = useCallback(
@@ -428,26 +462,26 @@ export function EditorProvider({
         }
       }
       setContent({ ...content, blocks });
+      recordMutation('move_block', [id]);
     },
-    [content, setContent]
+    [content, setContent, recordMutation]
   );
 
   const rollbackToPublished = useCallback(async () => {
     const published = page.lastPublishedContentJson;
     if (!published || typeof published !== 'object') return;
     const parsed = toEditorContentJson(published as object);
-    setState(parsed);
+    replaceContent(parsed);
     setSelectedBlockId(null);
     try {
       await api.pages.update(pageId, {
         contentJson: toPageContentJson(parsed),
       });
-      lastSavedContentRef.current = JSON.stringify(parsed);
-      setLastSaved(new Date());
+      markContentSaved(parsed);
     } catch (e) {
       showError(e instanceof Error ? e.message : 'Failed to rollback');
     }
-  }, [page, pageId, setState, showError]);
+  }, [page, pageId, replaceContent, setSelectedBlockId, markContentSaved, showError]);
 
   const canRollback =
     !!page.lastPublishedContentJson &&
@@ -482,8 +516,9 @@ export function EditorProvider({
         }
         return next;
       });
+      recordMutation('set_layout_mode');
     },
-    [setContent]
+    [setContent, recordMutation]
   );
 
   const layoutMode = content.layoutMode ?? 'fluid';
@@ -495,36 +530,9 @@ export function EditorProvider({
         ...prev,
         pageSettings: { ...(prev.pageSettings ?? {}), ...updates },
       }));
+      recordMutation('update_page_settings');
     },
-    [setContent]
-  );
-
-  const setSelectedBlockIds = useCallback((ids: string[]) => {
-    setSelectedBlockIdsState(ids);
-  }, []);
-
-  const toggleBlockSelection = useCallback(
-    (id: string, addToSelection?: boolean) => {
-      setSelectedBlockIdsState((prev) => {
-        const has = prev.includes(id);
-        if (addToSelection) {
-          return has ? prev.filter((x) => x !== id) : [...prev, id];
-        }
-        return has && prev.length === 1 ? [] : [id];
-      });
-    },
-    []
-  );
-
-  const handleBlockClick = useCallback(
-    (id: string, e: React.MouseEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        toggleBlockSelection(id, true);
-      } else {
-        setSelectedBlockId(id);
-      }
-    },
-    [toggleBlockSelection, setSelectedBlockId]
+    [setContent, recordMutation]
   );
 
   const copyBlocks = useCallback(() => {
@@ -621,8 +629,40 @@ export function EditorProvider({
     });
     setContent({ ...content, blocks });
     setSelectedBlockIds([container.id]);
+    recordMutation('group_blocks', [...selectedBlockIds]);
     return container.id;
-  }, [content, selectedBlockIds, setContent]);
+  }, [content, selectedBlockIds, setContent, recordMutation]);
+
+  const ungroupBlock = useCallback((): string[] | null => {
+    if (selectedBlockIds.length !== 1) return null;
+    const groupId = selectedBlockIds[0];
+    const group = content.blocks[groupId];
+    if (!group || group.type !== 'container' || !group.children?.length) return null;
+
+    const parentId = Object.keys(content.blocks).find((bid) =>
+      content.blocks[bid].children?.includes(groupId)
+    ) ?? content.root;
+    if (!parentId) return null;
+    const parent = content.blocks[parentId];
+    if (!parent?.children) return null;
+
+    const groupIndex = parent.children.indexOf(groupId);
+    if (groupIndex < 0) return null;
+
+    const blocks = { ...content.blocks };
+    const nextChildren = [
+      ...parent.children.slice(0, groupIndex),
+      ...group.children,
+      ...parent.children.slice(groupIndex + 1),
+    ];
+    blocks[parentId] = { ...parent, children: nextChildren };
+    delete blocks[groupId];
+
+    setContent({ ...content, blocks });
+    setSelectedBlockIds([...group.children]);
+    recordMutation('ungroup_block', [groupId, ...group.children]);
+    return [...group.children];
+  }, [content, selectedBlockIds, setContent, setSelectedBlockIds, recordMutation]);
 
   const alignBlocks = useCallback(
     (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
@@ -652,9 +692,116 @@ export function EditorProvider({
         blocks[item.id] = { ...b, props };
       });
       setContent({ ...content, blocks });
+      recordMutation(`align_blocks_${alignment}`, [...selectedBlockIds]);
     },
-    [content, layoutMode, selectedBlockIds, setContent]
+    [content, layoutMode, selectedBlockIds, setContent, recordMutation]
   );
+
+  const distributeBlocks = useCallback(
+    (axis: 'horizontal' | 'vertical') => {
+      if (layoutMode !== 'canvas' || selectedBlockIds.length < 3) return;
+      const blocks = { ...content.blocks };
+      const items = selectedBlockIds
+        .map((id) => {
+          const block = blocks[id];
+          if (!block) return null;
+          const props = (block.props ?? {}) as Record<string, unknown>;
+          return {
+            id,
+            position: axis === 'horizontal' ? ((props.x as number) ?? 0) : ((props.y as number) ?? 0),
+            size: axis === 'horizontal' ? ((props.width as number) ?? 200) : ((props.height as number) ?? 80),
+          };
+        })
+        .filter((item): item is { id: string; position: number; size: number } => item !== null)
+        .sort((a, b) => a.position - b.position);
+
+      if (items.length < 3) return;
+
+      const start = items[0].position;
+      const end = items[items.length - 1].position + items[items.length - 1].size;
+      const totalSize = items.reduce((sum, item) => sum + item.size, 0);
+      const gaps = items.length - 1;
+      const gapSize = Math.max(0, (end - start - totalSize) / gaps);
+
+      let cursor = start;
+      items.forEach((item) => {
+        const block = blocks[item.id];
+        if (!block) return;
+        const props = { ...(block.props ?? {}) } as Record<string, unknown>;
+        if (axis === 'horizontal') props.x = Math.round(cursor);
+        else props.y = Math.round(cursor);
+        blocks[item.id] = { ...block, props };
+        cursor += item.size + gapSize;
+      });
+
+      setContent({ ...content, blocks });
+      recordMutation(`distribute_blocks_${axis}`, [...selectedBlockIds]);
+    },
+    [content, layoutMode, selectedBlockIds, setContent, recordMutation]
+  );
+
+  const centerBlocksInCanvas = useCallback(
+    (axis: 'horizontal' | 'vertical') => {
+      if (layoutMode !== 'canvas' || selectedBlockIds.length === 0) return;
+      const blocks = { ...content.blocks };
+      const ids = selectedBlockIds.filter((id) => !!blocks[id]);
+      if (ids.length === 0) return;
+
+      const canvasCenterX = Math.round(canvasWidth / 2);
+      ids.forEach((id) => {
+        const block = blocks[id];
+        if (!block) return;
+        const props = { ...(block.props ?? {}) } as Record<string, unknown>;
+        const width = typeof props.width === 'number' ? props.width : 200;
+        const height = typeof props.height === 'number' ? props.height : 80;
+        if (axis === 'horizontal') {
+          props.x = Math.max(0, Math.round(canvasCenterX - width / 2));
+        } else {
+          props.y = Math.max(0, Math.round(400 - height / 2));
+        }
+        blocks[id] = { ...block, props };
+      });
+      setContent({ ...content, blocks });
+      recordMutation(`center_blocks_${axis}`, [...ids]);
+    },
+    [content, layoutMode, selectedBlockIds, canvasWidth, setContent, recordMutation]
+  );
+
+  const tidyVerticalSpacing = useCallback(() => {
+    if (layoutMode !== 'canvas') return;
+    const rootChildren = content.root ? (content.blocks[content.root]?.children ?? []) : [];
+    const targetIds = selectedBlockIds.length >= 2 ? selectedBlockIds : rootChildren;
+    const blocks = { ...content.blocks };
+    const items = targetIds
+      .map((id) => {
+        const block = blocks[id];
+        if (!block) return null;
+        const props = (block.props ?? {}) as Record<string, unknown>;
+        return {
+          id,
+          x: typeof props.x === 'number' ? props.x : 0,
+          y: typeof props.y === 'number' ? props.y : 0,
+          h: typeof props.height === 'number' ? props.height : 80,
+        };
+      })
+      .filter((item): item is { id: string; x: number; y: number; h: number } => item !== null)
+      .sort((a, b) => a.y - b.y);
+
+    if (items.length < 2) return;
+    const gap = 16;
+    let cursor = items[0].y;
+    items.forEach((item) => {
+      const block = blocks[item.id];
+      if (!block) return;
+      const props = { ...(block.props ?? {}) } as Record<string, unknown>;
+      props.y = Math.round(cursor);
+      blocks[item.id] = { ...block, props };
+      cursor += item.h + gap;
+    });
+
+    setContent({ ...content, blocks });
+    recordMutation('tidy_vertical_spacing', items.map((i) => i.id));
+  }, [content, layoutMode, selectedBlockIds, setContent, recordMutation]);
 
   const updateBlocksZIndex = useCallback(
     (delta: number) => {
@@ -669,8 +816,9 @@ export function EditorProvider({
         blocks[id] = { ...b, props };
       });
       setContent({ ...content, blocks });
+      recordMutation('update_blocks_zindex', [...selectedBlockIds]);
     },
-    [content, selectedBlockIds, setContent]
+    [content, selectedBlockIds, setContent, recordMutation]
   );
 
   const stickyBars = content.stickyBars ?? [];
@@ -678,12 +826,12 @@ export function EditorProvider({
 
   const addStickyBar = useCallback((): string => {
     const container = createEmptyBlock('container');
-    const text = createEmptyBlock('text', { content: 'Announcement text' });
+    const paragraph = createEmptyBlock('paragraph', { content: 'Announcement text' });
     const button = createEmptyBlock('button', { text: 'Learn more', href: '#' });
-    container.children = [text.id, button.id];
+    container.children = [paragraph.id, button.id];
     const blocks: Record<string, EditorBlock> = {
       [container.id]: container,
-      [text.id]: text,
+      [paragraph.id]: paragraph,
       [button.id]: button,
     };
     const id = `sb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -725,12 +873,12 @@ export function EditorProvider({
 
   const addPopup = useCallback((): string => {
     const container = createEmptyBlock('container');
-    const text = createEmptyBlock('text', { content: 'Popup content' });
+    const paragraph = createEmptyBlock('paragraph', { content: 'Popup content' });
     const button = createEmptyBlock('button', { text: 'Close', href: '#' });
-    container.children = [text.id, button.id];
+    container.children = [paragraph.id, button.id];
     const blocks: Record<string, EditorBlock> = {
       [container.id]: container,
-      [text.id]: text,
+      [paragraph.id]: paragraph,
       [button.id]: button,
     };
     const id = `pop_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -803,6 +951,11 @@ export function EditorProvider({
         e.preventDefault();
         pasteBlocks(content.root, undefined);
       } else if (mod && e.key === 'g') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          ungroupBlock();
+          return;
+        }
         e.preventDefault();
         groupBlocks();
       } else if (mod && e.key === 'd') {
@@ -819,38 +972,42 @@ export function EditorProvider({
         e.preventDefault();
         if (canRedo) redo();
       } else if (e.key === 'Escape') {
-        setSelectedBlockIds([]);
+        clearSelection();
         setSelectedBlockId(null);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedBlockIds.length > 0) {
           e.preventDefault();
-          selectedBlockIds.forEach((id) => removeBlock(id));
-          setSelectedBlockIds([]);
+          removeBlocks(selectedBlockIds);
+          clearSelection();
         }
       } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         // Arrow key nudge: 1px, or 10px with Shift
         if (selectedBlockIds.length > 0) {
           e.preventDefault();
           const step = e.shiftKey ? 10 : 1;
+          const blocks = { ...content.blocks };
           selectedBlockIds.forEach((id) => {
-            const block = content.blocks[id];
+            const block = blocks[id];
             if (!block) return;
             const p = (block.props ?? {}) as Record<string, unknown>;
             const x = (typeof p.x === 'number' ? p.x : 0);
             const y = (typeof p.y === 'number' ? p.y : 0);
-            let nx = x, ny = y;
+            let nx = x;
+            let ny = y;
             if (e.key === 'ArrowUp') ny = y - step;
             else if (e.key === 'ArrowDown') ny = y + step;
             else if (e.key === 'ArrowLeft') nx = x - step;
             else if (e.key === 'ArrowRight') nx = x + step;
-            updateBlock(id, { props: { ...p, x: nx, y: ny } });
+            blocks[id] = { ...block, props: { ...p, x: nx, y: ny } };
           });
+          setContent({ ...content, blocks });
+          recordMutation('nudge_blocks', [...selectedBlockIds]);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copyBlocks, pasteBlocks, groupBlocks, removeBlock, selectedBlockIds, content, undo, redo, canUndo, canRedo, setSelectedBlockIds, setSelectedBlockId, updateBlock]);
+  }, [copyBlocks, pasteBlocks, groupBlocks, ungroupBlock, removeBlocks, selectedBlockIds, content, undo, redo, canUndo, canRedo, clearSelection, setSelectedBlockId, setContent, recordMutation]);
 
   const value: EditorContextValue = useMemo(
     () => ({
@@ -864,6 +1021,7 @@ export function EditorProvider({
       insertBlockFromLibrary,
       updateBlock,
       removeBlock,
+      removeBlocks,
       moveBlock,
       undo,
       redo,
@@ -873,6 +1031,7 @@ export function EditorProvider({
       setPreviewMode,
       breakpoint,
       setBreakpoint,
+      autoStackMobileLayout,
       canvasWidth,
       setCanvasWidth,
       dirty,
@@ -893,7 +1052,11 @@ export function EditorProvider({
       copyBlocks,
       pasteBlocks,
       groupBlocks,
+      ungroupBlock,
       alignBlocks,
+      distributeBlocks,
+      centerBlocksInCanvas,
+      tidyVerticalSpacing,
       updateBlocksZIndex,
       stickyBars,
       popups,
@@ -907,6 +1070,7 @@ export function EditorProvider({
       scopedStyles,
       updateScopedStyle,
       deleteScopedStyle,
+      mutationLog,
     }),
     [
       pageId,
@@ -914,18 +1078,24 @@ export function EditorProvider({
       content,
       setContent,
       selectedBlockId,
+      setSelectedBlockId,
       insertBlock,
       insertBlockFromLibrary,
       updateBlock,
       removeBlock,
+      removeBlocks,
       moveBlock,
       undo,
       redo,
       canUndo,
       canRedo,
       previewMode,
+      setPreviewMode,
       breakpoint,
+      setBreakpoint,
+      autoStackMobileLayout,
       canvasWidth,
+      setCanvasWidth,
       dirty,
       saving,
       lastSaved,
@@ -944,7 +1114,11 @@ export function EditorProvider({
       copyBlocks,
       pasteBlocks,
       groupBlocks,
+      ungroupBlock,
       alignBlocks,
+      distributeBlocks,
+      centerBlocksInCanvas,
+      tidyVerticalSpacing,
       updateBlocksZIndex,
       stickyBars,
       popups,
@@ -953,10 +1127,12 @@ export function EditorProvider({
       removeStickyBar,
       addPopup,
       updatePopup,
+      removePopup,
       updateOverlayBlocks,
       scopedStyles,
       updateScopedStyle,
       deleteScopedStyle,
+      mutationLog,
     ]
   );
 

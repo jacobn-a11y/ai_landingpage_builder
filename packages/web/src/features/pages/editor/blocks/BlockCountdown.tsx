@@ -9,6 +9,10 @@ interface BlockCountdownProps {
   hoursLabel?: string;
   minutesLabel?: string;
   secondsLabel?: string;
+  numberColor?: string;
+  labelColor?: string;
+  backgroundColor?: string;
+  labelPosition?: 'below' | 'above';
   editMode: boolean;
   className?: string;
 }
@@ -25,12 +29,18 @@ function CountdownDisplay({
   hoursLabel = 'Hours',
   minutesLabel = 'Mins',
   secondsLabel = 'Secs',
+  numberColor,
+  labelColor,
+  labelPosition = 'below',
 }: {
   targetDate: Date;
   daysLabel: string;
   hoursLabel: string;
   minutesLabel: string;
   secondsLabel: string;
+  numberColor?: string;
+  labelColor?: string;
+  labelPosition?: 'below' | 'above';
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -47,23 +57,27 @@ function CountdownDisplay({
   return (
     <div className="flex gap-2 items-center flex-wrap">
       <div className="flex flex-col items-center">
-        <span className="text-2xl font-bold tabular-nums">{String(days).padStart(2, '0')}</span>
-        <span className="text-xs text-muted-foreground">{daysLabel}</span>
+        {labelPosition === 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{daysLabel}</span>}
+        <span className="text-2xl font-bold tabular-nums" style={numberColor ? { color: numberColor } : undefined}>{String(days).padStart(2, '0')}</span>
+        {labelPosition !== 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{daysLabel}</span>}
       </div>
       <span className="text-xl font-bold">:</span>
       <div className="flex flex-col items-center">
-        <span className="text-2xl font-bold tabular-nums">{String(hours).padStart(2, '0')}</span>
-        <span className="text-xs text-muted-foreground">{hoursLabel}</span>
+        {labelPosition === 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{hoursLabel}</span>}
+        <span className="text-2xl font-bold tabular-nums" style={numberColor ? { color: numberColor } : undefined}>{String(hours).padStart(2, '0')}</span>
+        {labelPosition !== 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{hoursLabel}</span>}
       </div>
       <span className="text-xl font-bold">:</span>
       <div className="flex flex-col items-center">
-        <span className="text-2xl font-bold tabular-nums">{String(mins).padStart(2, '0')}</span>
-        <span className="text-xs text-muted-foreground">{minutesLabel}</span>
+        {labelPosition === 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{minutesLabel}</span>}
+        <span className="text-2xl font-bold tabular-nums" style={numberColor ? { color: numberColor } : undefined}>{String(mins).padStart(2, '0')}</span>
+        {labelPosition !== 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{minutesLabel}</span>}
       </div>
       <span className="text-xl font-bold">:</span>
       <div className="flex flex-col items-center">
-        <span className="text-2xl font-bold tabular-nums">{String(secs).padStart(2, '0')}</span>
-        <span className="text-xs text-muted-foreground">{secondsLabel}</span>
+        {labelPosition === 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{secondsLabel}</span>}
+        <span className="text-2xl font-bold tabular-nums" style={numberColor ? { color: numberColor } : undefined}>{String(secs).padStart(2, '0')}</span>
+        {labelPosition !== 'above' && <span className="text-xs text-muted-foreground" style={labelColor ? { color: labelColor } : undefined}>{secondsLabel}</span>}
       </div>
     </div>
   );
@@ -76,6 +90,10 @@ export function BlockCountdown({
   hoursLabel = 'Hours',
   minutesLabel = 'Mins',
   secondsLabel = 'Secs',
+  numberColor,
+  labelColor,
+  backgroundColor,
+  labelPosition = 'below',
   editMode,
   className,
 }: BlockCountdownProps) {
@@ -91,6 +109,7 @@ export function BlockCountdown({
           selected && 'border-primary',
           className
         )}
+        style={backgroundColor ? { backgroundColor } : undefined}
         onClick={(e) => {
           e.stopPropagation();
           handleBlockClick(id, e);
@@ -103,6 +122,9 @@ export function BlockCountdown({
             hoursLabel={hoursLabel}
             minutesLabel={minutesLabel}
             secondsLabel={secondsLabel}
+            numberColor={numberColor}
+            labelColor={labelColor}
+            labelPosition={labelPosition}
           />
         ) : (
           <span className="text-sm text-muted-foreground">Set target date in properties</span>
@@ -113,13 +135,16 @@ export function BlockCountdown({
 
   if (!targetDate) return null;
   return (
-    <div className={cn('py-4 px-6', className)}>
+    <div className={cn('py-4 px-6 rounded', className)} style={backgroundColor ? { backgroundColor } : undefined}>
       <CountdownDisplay
         targetDate={targetDate}
         daysLabel={daysLabel}
         hoursLabel={hoursLabel}
         minutesLabel={minutesLabel}
         secondsLabel={secondsLabel}
+        numberColor={numberColor}
+        labelColor={labelColor}
+        labelPosition={labelPosition}
       />
     </div>
   );

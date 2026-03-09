@@ -42,6 +42,18 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
 
   const overrides = (props.overrides as Record<string, Record<string, unknown>>) ?? {};
   const bpOverride = overrides[breakpoint] ?? {};
+  const canvasValue = (key: string): number | undefined => (
+    breakpoint === 'desktop'
+      ? num(props[key])
+      : num(bpOverride[key]) ?? num(props[key])
+  );
+  const setCanvasValue = (key: string, value: number | undefined) => {
+    if (breakpoint === 'desktop') {
+      set(key, value);
+      return;
+    }
+    setOverride(breakpoint, key, value);
+  };
 
   return (
     <div className="space-y-3 pt-3 border-t">
@@ -73,8 +85,8 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
             <Label className="text-xs">X</Label>
             <Input
               type="number"
-              value={num(props.x) ?? ''}
-              onChange={(e) => set('x', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              value={canvasValue('x') ?? ''}
+              onChange={(e) => setCanvasValue('x', e.target.value ? parseInt(e.target.value, 10) : undefined)}
               className="h-7 text-xs"
               placeholder="0"
             />
@@ -83,8 +95,8 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
             <Label className="text-xs">Y</Label>
             <Input
               type="number"
-              value={num(props.y) ?? ''}
-              onChange={(e) => set('y', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              value={canvasValue('y') ?? ''}
+              onChange={(e) => setCanvasValue('y', e.target.value ? parseInt(e.target.value, 10) : undefined)}
               className="h-7 text-xs"
               placeholder="0"
             />
@@ -93,8 +105,8 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
             <Label className="text-xs">Width</Label>
             <Input
               type="number"
-              value={num(props.width) ?? ''}
-              onChange={(e) => set('width', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              value={canvasValue('width') ?? ''}
+              onChange={(e) => setCanvasValue('width', e.target.value ? parseInt(e.target.value, 10) : undefined)}
               className="h-7 text-xs"
               placeholder="200"
             />
@@ -103,8 +115,8 @@ export function UniversalPropertiesSection({ props, onPropChange, layoutMode = '
             <Label className="text-xs">Height</Label>
             <Input
               type="number"
-              value={num(props.height) ?? ''}
-              onChange={(e) => set('height', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              value={canvasValue('height') ?? ''}
+              onChange={(e) => setCanvasValue('height', e.target.value ? parseInt(e.target.value, 10) : undefined)}
               className="h-7 text-xs"
               placeholder="80"
             />

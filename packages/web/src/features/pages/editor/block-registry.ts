@@ -9,6 +9,8 @@ export interface BlockDefinition {
   label: string;
   category: 'layout' | 'content' | 'pattern' | 'form' | 'embed';
   icon?: string;
+  visibleInToolbar?: boolean;
+  deprecated?: boolean;
 }
 
 export const BLOCK_DEFINITIONS: BlockDefinition[] = [
@@ -21,7 +23,7 @@ export const BLOCK_DEFINITIONS: BlockDefinition[] = [
   // Content
   { type: 'headline', label: 'Headline', category: 'content' },
   { type: 'paragraph', label: 'Paragraph', category: 'content' },
-  { type: 'text', label: 'Text (legacy)', category: 'content' },
+  { type: 'text', label: 'Text (legacy)', category: 'content', visibleInToolbar: false, deprecated: true },
   { type: 'image', label: 'Image', category: 'content' },
   { type: 'button', label: 'Button', category: 'content' },
   { type: 'divider', label: 'Divider', category: 'content' },

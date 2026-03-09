@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useEditor } from '../EditorContext';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,11 @@ interface BlockButtonProps {
   buttonHoverBgColor?: string;
   buttonTextColor?: string;
   buttonHoverTextColor?: string;
+  buttonBorderWidth?: number;
+  buttonBorderStyle?: string;
+  buttonBorderColor?: string;
+  buttonRadius?: number;
+  buttonShadow?: string;
   editMode: boolean;
   className?: string;
 }
@@ -32,19 +38,32 @@ export function BlockButton({
   fontSize,
   fontWeight,
   buttonBgColor,
+  buttonHoverBgColor,
   buttonTextColor,
+  buttonHoverTextColor,
+  buttonBorderWidth,
+  buttonBorderStyle,
+  buttonBorderColor,
+  buttonRadius,
+  buttonShadow,
   editMode,
   className,
 }: BlockButtonProps) {
   const { handleBlockClick, selectedBlockIds } = useEditor();
   const selected = selectedBlockIds.includes(id);
+  const [hovered, setHovered] = useState(false);
 
   const style: React.CSSProperties = {
     ...(fontFamily ? { fontFamily } : {}),
     ...(fontSize ? { fontSize } : {}),
     ...(fontWeight ? { fontWeight } : {}),
-    ...(buttonBgColor ? { backgroundColor: buttonBgColor } : {}),
-    ...(buttonTextColor ? { color: buttonTextColor } : {}),
+    ...((hovered ? buttonHoverBgColor : buttonBgColor) ? { backgroundColor: hovered ? buttonHoverBgColor : buttonBgColor } : {}),
+    ...((hovered ? buttonHoverTextColor : buttonTextColor) ? { color: hovered ? buttonHoverTextColor : buttonTextColor } : {}),
+    ...(typeof buttonBorderWidth === 'number' ? { borderWidth: buttonBorderWidth } : {}),
+    ...(buttonBorderStyle ? { borderStyle: buttonBorderStyle as React.CSSProperties['borderStyle'] } : {}),
+    ...(buttonBorderColor ? { borderColor: buttonBorderColor } : {}),
+    ...(typeof buttonRadius === 'number' ? { borderRadius: buttonRadius } : {}),
+    ...(buttonShadow ? { boxShadow: buttonShadow } : {}),
   };
 
   if (editMode) {
@@ -66,6 +85,8 @@ export function BlockButton({
           e.stopPropagation();
           handleBlockClick(id, e);
         }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -92,6 +113,8 @@ export function BlockButton({
         className
       )}
       style={style}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {text}
     </a>

@@ -12,16 +12,29 @@ export function DroppableZone({
   children,
   className,
   style,
+  ...rest
 }: {
   id: string;
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
-}) {
+} & React.HTMLAttributes<HTMLDivElement>) {
+  const {
+    onClick,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
+    onMouseLeave,
+  } = rest;
   const { isOver, setNodeRef } = useDroppable({ id });
   return (
     <div
       ref={setNodeRef}
+      onClick={onClick}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
       className={cn(
         'min-h-[40px] rounded transition-all duration-150',
         isOver && 'ring-2 ring-primary/60 bg-primary/5 shadow-inner',

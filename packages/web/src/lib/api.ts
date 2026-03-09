@@ -1,14 +1,26 @@
 const API_BASE = '/api/v1';
 
+function getDevPersona(): string | null {
+  const fromEnv = (import.meta.env.VITE_DEV_PERSONA as string | undefined)?.trim();
+  if (fromEnv) return fromEnv;
+  if (typeof window !== 'undefined') {
+    const qp = new URLSearchParams(window.location.search).get('persona')?.trim();
+    if (qp) return qp;
+  }
+  return null;
+}
+
 async function fetchApi<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const devPersona = getDevPersona();
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(devPersona ? { 'X-Dev-Persona': devPersona } : {}),
       ...options.headers,
     },
   });
@@ -27,10 +39,15 @@ async function fetchApiFormData<T>(
   formData: FormData,
   options: RequestInit = {}
 ): Promise<T> {
+  const devPersona = getDevPersona();
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     ...options,
     credentials: 'include',
+    headers: {
+      ...(devPersona ? { 'X-Dev-Persona': devPersona } : {}),
+      ...options.headers,
+    },
     body: formData,
   });
   if (!res.ok) {
@@ -124,7 +141,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data ?? {}),
       }),
-    publish: (id: string, data: { targetType: 'demo' | 'custom'; domainId?: string; path?: string }) =>
+    publish: (id: string, data: { targetType: PublishTargetType; domainId?: string; path?: string; webflowSubdomain?: string }) =>
       fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -139,6 +156,21 @@ export const api = {
       fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish-schedule`, {
         method: 'PATCH',
         body: JSON.stringify(data),
+      }),
+    schedule: (id: string, data: {
+      publishAt?: string | null;
+      unpublishAt?: string | null;
+      targetType?: PublishTargetType;
+      domainId?: string;
+      path?: string;
+      webflowSubdomain?: string;
+    }) =>
+      fetchApi<{ ok: boolean; publishStatus: PublishStatus }>(`/pages/${id}/publish-schedule`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          publishAt: data.publishAt ?? null,
+          unpublishAt: data.unpublishAt ?? null,
+        }),
       }),
   },
   forms: {
@@ -193,6 +225,7 @@ export const api = {
     },
     get: (id: string) => fetchApi<{ submission: Submission }>(`/submissions/${id}`),
     exportCsv: async (opts?: { pageId?: string; from?: string; to?: string }) => {
+      const devPersona = getDevPersona();
       const params = new URLSearchParams();
       if (opts?.pageId) params.set('pageId', opts.pageId);
       if (opts?.from) params.set('from', opts.from);
@@ -200,6 +233,9 @@ export const api = {
       const qs = params.toString();
       const res = await fetch(`${API_BASE}/submissions/export/csv${qs ? `?${qs}` : ''}`, {
         credentials: 'include',
+        headers: {
+          ...(devPersona ? { 'X-Dev-Persona': devPersona } : {}),
+        },
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -341,7 +377,7 @@ export type FormSchemaConfig = {
 export type PublishStatus = {
   publishConfig: {
     domainId?: string;
-    targetType?: 'demo' | 'custom';
+    targetType?: PublishTargetType;
     path?: string;
     status?: 'draft' | 'published' | 'scheduled';
     publishAt?: string;
@@ -353,6 +389,8 @@ export type PublishStatus = {
   targetLabel: string;
   url?: string;
 };
+
+export type PublishTargetType = 'demo' | 'custom' | 'webflow_subdomain';
 
 export type PageScripts = {
   header?: string;

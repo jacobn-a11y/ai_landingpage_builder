@@ -6,6 +6,12 @@ import type {
   BaseBlock,
   BlockType,
   PageContentJson,
+  PageDocument,
+} from '@replica-pages/blocks';
+import {
+  normalizePageDocument,
+  PAGE_DOCUMENT_SCHEMA_VERSION,
+  toLegacyPageContent,
 } from '@replica-pages/blocks';
 
 export type { BaseBlock, BlockType, PageContentJson };
@@ -66,6 +72,7 @@ export interface Popup extends OverlayContent {
 }
 
 export interface EditorContentJson {
+  schemaVersion: number;
   root: string;
   blocks: Record<string, EditorBlock>;
   layoutMode?: LayoutMode;
@@ -77,33 +84,40 @@ export interface EditorContentJson {
 export function toEditorContentJson(
   content: PageContentJson | object | null
 ): EditorContentJson {
-  const c = content as (PageContentJson & { layoutMode?: LayoutMode }) | null | undefined;
-  if (!c || typeof c !== 'object') {
-    return { root: '', blocks: {}, layoutMode: 'fluid' };
-  }
-  const root = typeof c.root === 'string' ? c.root : '';
-  const blocks = c.blocks && typeof c.blocks === 'object' ? c.blocks : {};
-  const layoutMode = c.layoutMode === 'canvas' ? 'canvas' : 'fluid';
-  const pageSettings = (c as { pageSettings?: PageSettings }).pageSettings;
-  const stickyBars = (c as { stickyBars?: StickyBar[] }).stickyBars;
-  const popups = (c as { popups?: Popup[] }).popups;
+  const normalized = normalizePageDocument(content);
+
+  const pageSettings = normalized.pageSettings as PageSettings | undefined;
+  const stickyBars = normalized.stickyBars as StickyBar[] | undefined;
+  const popups = normalized.popups as Popup[] | undefined;
+
   return {
-    root,
-    blocks,
-    layoutMode,
+    schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
+    root: normalized.root,
+    blocks: normalized.blocks as Record<string, EditorBlock>,
+    ...(normalized.layoutMode ? { layoutMode: normalized.layoutMode } : {}),
     ...(pageSettings ? { pageSettings } : {}),
     ...(stickyBars?.length ? { stickyBars } : {}),
     ...(popups?.length ? { popups } : {}),
   };
 }
 
-export function toPageContentJson(content: EditorContentJson): PageContentJson & { layoutMode?: LayoutMode; pageSettings?: PageSettings; stickyBars?: StickyBar[]; popups?: Popup[] } {
+export function toPageContentJson(
+  content: EditorContentJson
+): PageContentJson & {
+  schemaVersion: number;
+  layoutMode?: LayoutMode;
+  pageSettings?: PageSettings;
+  stickyBars?: StickyBar[];
+  popups?: Popup[];
+} {
+  const normalized = normalizePageDocument(content) as PageDocument;
+  const legacy = toLegacyPageContent(normalized);
   return {
-    root: content.root,
-    blocks: content.blocks,
-    ...(content.layoutMode && content.layoutMode !== 'fluid' ? { layoutMode: content.layoutMode } : {}),
-    ...(content.pageSettings ? { pageSettings: content.pageSettings } : {}),
-    ...(content.stickyBars?.length ? { stickyBars: content.stickyBars } : {}),
-    ...(content.popups?.length ? { popups: content.popups } : {}),
+    ...legacy,
+    schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
+    ...(legacy.layoutMode ? { layoutMode: legacy.layoutMode } : {}),
+    ...(legacy.pageSettings ? { pageSettings: legacy.pageSettings as PageSettings } : {}),
+    ...(legacy.stickyBars ? { stickyBars: legacy.stickyBars as StickyBar[] } : {}),
+    ...(legacy.popups ? { popups: legacy.popups as Popup[] } : {}),
   };
 }

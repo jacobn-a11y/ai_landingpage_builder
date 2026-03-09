@@ -43,9 +43,48 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Strip characters that could break out of a CSS value context */
-function sanitizeCssValue(val: string): string {
-  return val.replace(/[;{}()<>\\/"']/g, '');
+function sanitizeCssColor(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return trimmed;
+  if (/^(rgb|rgba|hsl|hsla)\(\s*[-\d.%\s,]+\)$/.test(trimmed)) return trimmed;
+  if (/^var\(--[a-zA-Z0-9_-]+\)$/.test(trimmed)) return trimmed;
+  if (/^[a-zA-Z]{1,32}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function sanitizeFontFamily(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/[;<>{}]/.test(trimmed)) return null;
+  if (/(url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:)/i.test(trimmed)) return null;
+  if (!/^[a-zA-Z0-9\s,'"._-]+$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function sanitizeUrlLike(value: string, type: 'href' | 'src' | 'embed'): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/\s+/g, '').toLowerCase();
+  if (
+    normalized.startsWith('javascript:') ||
+    normalized.startsWith('vbscript:') ||
+    normalized.startsWith('data:text/html')
+  ) {
+    return null;
+  }
+
+  if (type === 'href') {
+    if (/^(https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(trimmed)) return trimmed;
+    return null;
+  }
+  if (type === 'embed') {
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return null;
+  }
+  if (/^(https?:|\/|\.\/|\.\.\/)/i.test(trimmed)) return trimmed;
+  if (/^data:image\//i.test(trimmed)) return trimmed;
+  return null;
 }
 
 function getUniversalStyleString(props: Record<string, unknown>): string {
@@ -60,7 +99,10 @@ function getUniversalStyleString(props: Record<string, unknown>): string {
   if (num(props.paddingRight) != null) styles.push(`padding-right:${props.paddingRight}px`);
   if (num(props.paddingBottom) != null) styles.push(`padding-bottom:${props.paddingBottom}px`);
   if (num(props.paddingLeft) != null) styles.push(`padding-left:${props.paddingLeft}px`);
-  if (str(props.backgroundColor)) styles.push(`background-color:${sanitizeCssValue(String(props.backgroundColor))}`);
+  if (str(props.backgroundColor)) {
+    const safe = sanitizeCssColor(String(props.backgroundColor));
+    if (safe) styles.push(`background-color:${safe}`);
+  }
   if (num(props.borderRadius) != null) styles.push(`border-radius:${props.borderRadius}px`);
   if (props.width != null) styles.push(`width:${typeof props.width === 'number' ? props.width + 'px' : props.width}`);
   if (num(props.zIndex) != null) styles.push(`z-index:${props.zIndex}`);
@@ -116,7 +158,10 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       const style: string[] = [];
       if (props.maxWidth != null) style.push(`max-width:${props.maxWidth}px`);
       if (props.padding != null) style.push(`padding:${props.padding}px`);
-      if (props.backgroundColor) style.push(`background-color:${sanitizeCssValue(String(props.backgroundColor))}`);
+      if (props.backgroundColor) {
+        const safeBg = sanitizeCssColor(String(props.backgroundColor));
+        if (safeBg) style.push(`background-color:${safeBg}`);
+      }
       const styleAttr = style.length ? ` style="${escapeHtml(style.join(';'))}"` : '';
       const inner = children.map((id) => blocks[id]).filter(Boolean).map((b) => renderBlock(b, blocks, depth + 1, ctx)).join('');
       result = `<section class="w-full"${styleAttr}><div class="max-w-[1200px] mx-auto">${inner}</div></section>`;
@@ -159,13 +204,15 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
     case 'image': {
       const src = replaceDynamicText(String(props.src ?? ''), ctx?.urlParams);
       const alt = replaceDynamicText(String(props.alt ?? ''), ctx?.urlParams);
-      result = `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" class="max-w-full h-auto" loading="lazy" />`;
+      const safeSrc = sanitizeUrlLike(src, 'src') ?? '';
+      result = `<img src="${escapeHtml(safeSrc)}" alt="${escapeHtml(alt)}" class="max-w-full h-auto" loading="lazy" />`;
       break;
     }
     case 'button': {
       const href = replaceDynamicText(String(props.href ?? '#'), ctx?.urlParams);
       const text = replaceDynamicText(String(props.text ?? 'Button'), ctx?.urlParams);
-      result = `<a href="${escapeHtml(href)}" class="inline-block px-4 py-2 bg-primary text-primary-foreground rounded">${escapeHtml(text)}</a>`;
+      const safeHref = sanitizeUrlLike(href, 'href') ?? '#';
+      result = `<a href="${escapeHtml(safeHref)}" class="inline-block px-4 py-2 bg-primary text-primary-foreground rounded">${escapeHtml(text)}</a>`;
       break;
     }
     case 'divider': {
@@ -206,7 +253,9 @@ function renderBlock(block: BaseBlock, blocks: Record<string, BaseBlock>, depth:
       }
       if (!embedUrl) break;
       const ratio = (props.aspectRatio as string) ?? '16/9';
-      result = `<div class="relative w-full overflow-hidden rounded" style="aspect-ratio:${escapeHtml(ratio)}"><iframe src="${escapeHtml(embedUrl)}" class="absolute inset-0 w-full h-full" allowfullscreen></iframe></div>`;
+      const safeEmbedUrl = sanitizeUrlLike(embedUrl, 'embed');
+      if (!safeEmbedUrl) break;
+      result = `<div class="relative w-full overflow-hidden rounded" style="aspect-ratio:${escapeHtml(ratio)}"><iframe src="${escapeHtml(safeEmbedUrl)}" class="absolute inset-0 w-full h-full" allowfullscreen></iframe></div>`;
       break;
     }
     case 'shapeRectangle': {
@@ -469,7 +518,8 @@ function getStickyBarsHtml(bars: StickyBarData[]): string {
     .map((bar) => {
       const inner = renderOverlayContent(bar.blocks, bar.root);
       const pos = bar.position === 'top' ? 'top:0' : 'bottom:0';
-      const bg = bar.backgroundColor ? `background-color:${sanitizeCssValue(bar.backgroundColor)}` : 'background-color:#1e293b';
+      const safeBg = bar.backgroundColor ? sanitizeCssColor(bar.backgroundColor) : null;
+      const bg = safeBg ? `background-color:${safeBg}` : 'background-color:#1e293b';
       const style = `position:fixed;left:0;right:0;${pos};z-index:9999;${bg};color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;max-width:100%;box-sizing:border-box`;
       return `<div class="rp-sticky-bar" data-id="${escapeHtml(bar.id)}" style="${escapeHtml(style)}">${inner}</div>`;
     })
@@ -554,8 +604,14 @@ export function renderFullPageHtml(opts: RenderPageOptions): string {
   const ogTitle = pageSettings?.seoOgTitle ?? pageName;
   const ogImage = pageSettings?.seoOgImage ?? '';
   const bodyStyle: string[] = [];
-  if (pageSettings?.backgroundColor) bodyStyle.push(`background-color:${sanitizeCssValue(pageSettings.backgroundColor)}`);
-  if (pageSettings?.fontFamily) bodyStyle.push(`font-family:${sanitizeCssValue(pageSettings.fontFamily)}`);
+  if (pageSettings?.backgroundColor) {
+    const safeBg = sanitizeCssColor(pageSettings.backgroundColor);
+    if (safeBg) bodyStyle.push(`background-color:${safeBg}`);
+  }
+  if (pageSettings?.fontFamily) {
+    const safeFont = sanitizeFontFamily(pageSettings.fontFamily);
+    if (safeFont) bodyStyle.push(`font-family:${safeFont}`);
+  }
   const bodyStyleAttr = bodyStyle.length ? ` style="${escapeHtml(bodyStyle.join(';'))}"` : '';
 
   return `<!DOCTYPE html>

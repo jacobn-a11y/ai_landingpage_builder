@@ -105,7 +105,7 @@ function StickyBarEditorDialog({
     const id = genId();
     const newBlock = {
       id,
-      type: 'text' as const,
+      type: 'paragraph' as const,
       props: { content: 'New block' },
       meta: {},
     };
@@ -232,7 +232,7 @@ function OverlayPreview({
   const children = block.children ?? [];
   return (
     <div className="flex flex-wrap gap-2 items-center">
-      {block.type === 'text' && (
+      {(block.type === 'paragraph' || block.type === 'headline' || block.type === 'text') && (
         <span>{(block.props?.content as string) ?? 'Text'}</span>
       )}
       {block.type === 'button' && (
@@ -247,7 +247,7 @@ function OverlayPreview({
           ))}
         </div>
       )}
-      {!['container', 'text', 'button'].includes(block.type) &&
+      {!['container', 'text', 'paragraph', 'headline', 'button'].includes(block.type) &&
         children.map((cid) => (
           <OverlayPreview key={cid} rootId={cid} blocks={blocks} />
         ))}

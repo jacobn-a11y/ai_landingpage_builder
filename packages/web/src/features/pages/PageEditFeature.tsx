@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import type { Page } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   Tablet,
   Smartphone,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { PublishDialog } from './PublishDialog';
 import { EditorProvider } from './editor/EditorContext';
@@ -23,6 +24,16 @@ import { BlockToolbar } from './editor/BlockToolbar';
 import { LayersPanel } from './editor/LayersPanel';
 import { PropertiesPanel } from './editor/PropertiesPanel';
 import { useEditor } from './editor/EditorContext';
+import { recordEditorMetric } from './editor/quality/metrics';
+import {
+  evaluateWorldClassScorecard,
+  getEditorMetricEvents,
+  summarizeEditorMetrics,
+} from './editor/quality/metrics';
+import { AiWorkspacePanel } from './editor/AiWorkspacePanel';
+import { validatePageQuality } from './editor/quality/validator';
+import { evaluateLaunchReadiness } from './editor/quality/launch-gates';
+import { editorRollout } from './editor/quality/rollout';
 
 function SaveIndicator() {
   const { dirty, saving, lastSaved } = useEditor();
@@ -32,14 +43,51 @@ function SaveIndicator() {
   return null;
 }
 
-function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPublishChange?: () => void }) {
+function QualityIndicator() {
+  const [pass, setPass] = useState(true);
+
+  useEffect(() => {
+    const refresh = () => {
+      const recent = getEditorMetricEvents().slice(-500);
+      const summary = summarizeEditorMetrics(recent);
+      const result = evaluateWorldClassScorecard(summary);
+      setPass(result.pass);
+    };
+    refresh();
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <span
+      className={`text-xs font-medium ${pass ? 'text-emerald-600' : 'text-rose-600'}`}
+      title="World-class scorecard status from editor telemetry"
+    >
+      {pass ? 'Quality: Pass' : 'Quality: Failing'}
+    </span>
+  );
+}
+
+function EditorToolbar({
+  onBack,
+  onPublishChange,
+  aiOpen,
+  onToggleAi,
+}: {
+  onBack: () => void;
+  onPublishChange?: () => void;
+  aiOpen: boolean;
+  onToggleAi: () => void;
+}) {
   const [publishOpen, setPublishOpen] = useState(false);
   const {
     page,
+    content,
     previewMode,
     setPreviewMode,
     breakpoint,
     setBreakpoint,
+    autoStackMobileLayout,
     undo,
     redo,
     canUndo,
@@ -47,6 +95,15 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
     rollbackToPublished,
     canRollback,
   } = useEditor();
+  const qualityIssues = validatePageQuality(content);
+  const blockingIssues = qualityIssues.filter((issue) => issue.severity === 'error');
+  const blockingIssueCount = blockingIssues.length;
+  const blockingIssueMessages = blockingIssues.map((issue) => issue.message);
+  const aiWorkspaceEnabled = editorRollout.aiWorkspaceEnabled;
+  const launchReadiness = evaluateLaunchReadiness(
+    summarizeEditorMetrics(getEditorMetricEvents().slice(-500)),
+    qualityIssues
+  );
 
   return (
     <header className="flex items-center justify-between gap-4 px-3 py-1.5 border-b bg-background shrink-0">
@@ -58,6 +115,7 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
           {page?.name ?? 'Page'}
         </h1>
         <SaveIndicator />
+        <QualityIndicator />
       </div>
 
       <div className="flex items-center gap-1">
@@ -91,6 +149,15 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
 
         <div className="w-px h-5 bg-border mx-1" />
 
+        {breakpoint === 'mobile' && (
+          <>
+            <Button variant="ghost" size="sm" className="h-7" onClick={autoStackMobileLayout}>
+              Auto-stack Mobile
+            </Button>
+            <div className="w-px h-5 bg-border mx-1" />
+          </>
+        )}
+
         {/* Preview / External preview */}
         <Button
           variant={previewMode ? 'secondary' : 'ghost'}
@@ -115,6 +182,22 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
 
         <div className="w-px h-5 bg-border mx-1" />
 
+        {aiWorkspaceEnabled && (
+          <>
+            <Button
+              variant={aiOpen ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7"
+              onClick={onToggleAi}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              AI Workspace
+            </Button>
+
+            <div className="w-px h-5 bg-border mx-1" />
+          </>
+        )}
+
         {/* Publish */}
         <Button size="sm" className="h-7" onClick={() => setPublishOpen(true)}>
           <Send className="h-3.5 w-3.5 mr-1" />
@@ -126,6 +209,9 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
             onOpenChange={setPublishOpen}
             page={page}
             onPublished={onPublishChange}
+            blockingIssueCount={blockingIssueCount}
+            blockingIssues={blockingIssueMessages}
+            launchReadiness={launchReadiness}
           />
         )}
       </div>
@@ -135,10 +221,17 @@ function EditorToolbar({ onBack, onPublishChange }: { onBack: () => void; onPubl
 
 function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPublishChange?: () => void }) {
   const { previewMode } = useEditor();
+  const [aiOpen, setAiOpen] = useState(false);
+  const aiWorkspaceEnabled = editorRollout.aiWorkspaceEnabled;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] -m-6">
-      <EditorToolbar onBack={onBack} onPublishChange={onPublishChange} />
+      <EditorToolbar
+        onBack={onBack}
+        onPublishChange={onPublishChange}
+        aiOpen={aiWorkspaceEnabled && aiOpen}
+        onToggleAi={() => setAiOpen((v) => !v)}
+      />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left sidebar: block toolbar (hidden in preview) */}
@@ -153,6 +246,7 @@ function EditorLayout({ onBack, onPublishChange }: { onBack: () => void; onPubli
           {/* Right sidebar: layers + properties (hidden in preview) */}
           {!previewMode && <LayersPanel />}
           {!previewMode && <PropertiesPanel />}
+          {!previewMode && aiWorkspaceEnabled && aiOpen && <AiWorkspacePanel />}
         </div>
       </div>
     </div>
@@ -166,19 +260,29 @@ export function PageEditFeature() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const loadStartRef = useRef<number>(0);
 
   useEffect(() => {
     if (!id) return;
+    loadStartRef.current = performance.now();
     api.pages
       .get(id)
       .then(({ page: p }) => {
         setPage(p);
         setError(null);
         document.title = `${p.name} — Editor`;
+        recordEditorMetric('editor_page_load_ms', performance.now() - loadStartRef.current, {
+          result: 'success',
+          pageId: p.id,
+        });
       })
       .catch(() => {
         setPage(null);
         setError('Page not found');
+        recordEditorMetric('editor_page_load_ms', performance.now() - loadStartRef.current, {
+          result: 'error',
+          pageId: id,
+        });
       })
       .finally(() => setLoading(false));
     return () => { document.title = 'Replica Pages'; };

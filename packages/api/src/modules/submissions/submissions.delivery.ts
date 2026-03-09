@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { prisma } from '../../shared/db.js';
-import { isSafeWebhookUrl } from '../../shared/validate-url.js';
+import { isSafeWebhookUrlStrict } from '../../shared/validate-url.js';
 import { decryptOrFallback } from '../../shared/crypto.js';
 
 const MAX_ATTEMPTS = 3;
@@ -47,7 +47,7 @@ export async function queueZapierDelivery(submissionId: string): Promise<void> {
 
   for (const integration of integrations) {
     const config = getWebhookConfig(integration);
-    if (!config?.webhookUrl || !isSafeWebhookUrl(config.webhookUrl)) continue;
+    if (!config?.webhookUrl || !(await isSafeWebhookUrlStrict(config.webhookUrl))) continue;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {

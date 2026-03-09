@@ -3,9 +3,11 @@
  */
 
 import type { BlockType } from '@replica-pages/blocks';
+import { memo } from 'react';
 import { useEditor } from './EditorContext';
 import { getUniversalStyleObject, hasUniversalProps } from './universal-props';
 import { ImportSafeWrapper } from './ImportSafeWrapper';
+import { BlockErrorBoundary } from './BlockErrorBoundary';
 import { TierCTokenEditor, type TokenDef } from './TierCTokenEditor';
 import {
   BlockText,
@@ -41,7 +43,7 @@ interface BlockRendererProps {
   isDropTarget?: boolean;
 }
 
-export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
+export const BlockRenderer = memo(function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
   const { content, previewMode, page, breakpoint, updateBlock } = useEditor();
   const block = content.blocks[blockId];
   if (!block) return null;
@@ -137,6 +139,8 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           linkNewTab={(props.linkNewTab as boolean) ?? false}
           objectFit={(props.objectFit as string) ?? 'contain'}
           lazyLoad={(props.lazyLoad as boolean) ?? true}
+          borderRadius={props.borderRadius as number | undefined}
+          opacity={props.opacity as number | undefined}
         />
       );
     case 'button':
@@ -156,6 +160,11 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           buttonHoverBgColor={props.buttonHoverBgColor as string | undefined}
           buttonTextColor={props.buttonTextColor as string | undefined}
           buttonHoverTextColor={props.buttonHoverTextColor as string | undefined}
+          buttonBorderWidth={props.buttonBorderWidth as number | undefined}
+          buttonBorderStyle={props.buttonBorderStyle as string | undefined}
+          buttonBorderColor={props.buttonBorderColor as string | undefined}
+          buttonRadius={props.buttonRadius as number | undefined}
+          buttonShadow={props.buttonShadow as string | undefined}
         />
       );
     case 'divider':
@@ -185,6 +194,8 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           autoplay={(props.autoplay as boolean) ?? false}
           loop={(props.loop as boolean) ?? false}
           mute={(props.mute as boolean) ?? false}
+          showControls={(props.showControls as boolean) ?? true}
+          title={(props.title as string) ?? 'Video'}
           aspectRatio={(props.aspectRatio as string) ?? '16/9'}
         />
       );
@@ -221,6 +232,10 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
           hoursLabel={(props.hoursLabel as string) ?? 'Hours'}
           minutesLabel={(props.minutesLabel as string) ?? 'Mins'}
           secondsLabel={(props.secondsLabel as string) ?? 'Secs'}
+          numberColor={props.numberColor as string | undefined}
+          labelColor={props.labelColor as string | undefined}
+          backgroundColor={props.backgroundColor as string | undefined}
+          labelPosition={(props.labelPosition as 'below' | 'above') ?? 'below'}
         />
       );
     case 'table':
@@ -417,5 +432,9 @@ export function BlockRenderer({ blockId, isDropTarget }: BlockRendererProps) {
     }
   };
 
-  return <Wrapper>{renderContent()}</Wrapper>;
-}
+  return (
+    <BlockErrorBoundary blockId={block.id} blockType={block.type}>
+      <Wrapper>{renderContent()}</Wrapper>
+    </BlockErrorBoundary>
+  );
+});

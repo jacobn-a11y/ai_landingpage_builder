@@ -4,3 +4,4 @@
 
 export * from './block-types';
 export * from './form-types';
+export * from './page-document';

@@ -24,6 +24,25 @@ function getEmbedUrl(provider: VideoProvider, url: string): string | null {
   }
 }
 
+function withVideoParams(
+  embedUrl: string,
+  provider: VideoProvider,
+  opts: { autoplay: boolean; mute: boolean; loop: boolean; showControls: boolean }
+): string {
+  try {
+    const parsed = new URL(embedUrl);
+    if (opts.autoplay) parsed.searchParams.set('autoplay', '1');
+    if (opts.mute) parsed.searchParams.set('mute', '1');
+    if (opts.loop) parsed.searchParams.set('loop', '1');
+    if (!opts.showControls && (provider === 'youtube' || provider === 'vimeo')) {
+      parsed.searchParams.set('controls', '0');
+    }
+    return parsed.toString();
+  } catch {
+    return embedUrl;
+  }
+}
+
 interface BlockVideoProps {
   id: string;
   provider?: VideoProvider;
@@ -31,6 +50,8 @@ interface BlockVideoProps {
   autoplay?: boolean;
   loop?: boolean;
   mute?: boolean;
+  showControls?: boolean;
+  title?: string;
   aspectRatio?: string;
   editMode: boolean;
   className?: string;
@@ -43,6 +64,8 @@ export function BlockVideo({
   autoplay = false,
   loop = false,
   mute = false,
+  showControls = true,
+  title = 'Video',
   aspectRatio = '16/9',
   editMode,
   className,
@@ -67,8 +90,8 @@ export function BlockVideo({
         {embedUrl ? (
           <div className="relative w-full" style={{ aspectRatio }}>
             <iframe
-              src={embedUrl}
-              title="Video"
+              src={withVideoParams(embedUrl, provider, { autoplay: false, mute, loop, showControls })}
+              title={title || 'Video'}
               className="absolute inset-0 w-full h-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
@@ -87,8 +110,8 @@ export function BlockVideo({
   return (
     <div className={cn('relative w-full overflow-hidden rounded', className)} style={{ aspectRatio }}>
       <iframe
-        src={embedUrl + (autoplay ? '?autoplay=1' : '') + (mute ? '&mute=1' : '') + (loop ? '&loop=1' : '')}
-        title="Video"
+        src={withVideoParams(embedUrl, provider, { autoplay, mute, loop, showControls })}
+        title={title || 'Video'}
         className="absolute inset-0 w-full h-full"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
